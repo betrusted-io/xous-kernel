@@ -53,7 +53,7 @@ use proc_macro::TokenStream;
 /// }
 /// ```
 #[proc_macro_attribute]
-pub fn entry(args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn xous_kernel_entry(args: TokenStream, input: TokenStream) -> TokenStream {
     let f = parse_macro_input!(input as ItemFn);
 
     // check the function signature
@@ -94,7 +94,7 @@ pub fn entry(args: TokenStream, input: TokenStream) -> TokenStream {
     let stmts = f.block.stmts;
 
     quote!(
-        #[export_name = "xous_main"]
+        #[export_name = "xous_kernel_main"]
         #(#attrs)*
         pub #unsafety fn #hash() -> ! {
             #(#stmts)*

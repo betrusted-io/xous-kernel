@@ -254,10 +254,10 @@
 #![deny(warnings)]
 
 extern crate xous_riscv;
-extern crate riscv_rt_macros as macros;
+extern crate xous_kernel_riscv_rt_macros as macros;
 extern crate r0;
 
-pub use macros::{entry, pre_init};
+pub use macros::{xous_kernel_entry, pre_init};
 
 use xous_riscv::register::mstatus;
 
@@ -288,7 +288,7 @@ extern "C" {
 pub unsafe extern "C" fn start_rust() -> ! {
     extern "Rust" {
         // This symbol will be provided by the kernel
-        fn xous_main() -> !;
+        fn xous_kernel_main() -> !;
 
         // This symbol will be provided by the user via `#[pre_init]`
         fn __pre_init();
@@ -303,7 +303,7 @@ pub unsafe extern "C" fn start_rust() -> ! {
         r0::init_data(&mut _sdata, &mut _edata, &_sidata);
     }
 
-    xous_main();
+    xous_kernel_main();
 }
 
 

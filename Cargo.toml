@@ -7,7 +7,7 @@ description = "Core kernel for Xous, including task switching and memory managem
 
 [dependencies]
 xous-riscv = { path = "xous-riscv" }
-xous-riscv-rt = { path = "xous-riscv-rt" }
+xous-kernel-riscv-rt = { path = "xous-kernel-riscv-rt" }
 
 [profile.release]
 codegen-units = 1 # 1 better optimizations
