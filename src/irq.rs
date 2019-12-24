@@ -1,39 +1,6 @@
 use crate::syscalls;
+use crate::filled_array;
 use xous_riscv::register::{mstatus, vmim};
-
-// Shamelessly taken from
-// https://stackoverflow.com/questions/36258417/using-a-macro-to-initialize-a-big-array-of-non-copy-elements
-// Allows us to fill an array with a predefined value.
-macro_rules! filled_array {
-    (@accum (0, $($_es:expr),*) -> ($($body:tt)*))
-        => {filled_array!(@as_expr [$($body)*])};
-    (@accum (1, $($es:expr),*) -> ($($body:tt)*))
-        => {filled_array!(@accum (0, $($es),*) -> ($($body)* $($es,)*))};
-    (@accum (2, $($es:expr),*) -> ($($body:tt)*))
-        => {filled_array!(@accum (0, $($es),*) -> ($($body)* $($es,)* $($es,)*))};
-    (@accum (3, $($es:expr),*) -> ($($body:tt)*))
-        => {filled_array!(@accum (2, $($es),*) -> ($($body)* $($es,)*))};
-    (@accum (4, $($es:expr),*) -> ($($body:tt)*))
-        => {filled_array!(@accum (2, $($es,)* $($es),*) -> ($($body)*))};
-    (@accum (5, $($es:expr),*) -> ($($body:tt)*))
-        => {filled_array!(@accum (4, $($es),*) -> ($($body)* $($es,)*))};
-    (@accum (6, $($es:expr),*) -> ($($body:tt)*))
-        => {filled_array!(@accum (4, $($es),*) -> ($($body)* $($es,)* $($es,)*))};
-    (@accum (7, $($es:expr),*) -> ($($body:tt)*))
-        => {filled_array!(@accum (4, $($es),*) -> ($($body)* $($es,)* $($es,)* $($es,)*))};
-    (@accum (8, $($es:expr),*) -> ($($body:tt)*))
-        => {filled_array!(@accum (4, $($es,)* $($es),*) -> ($($body)*))};
-    (@accum (16, $($es:expr),*) -> ($($body:tt)*))
-        => {filled_array!(@accum (8, $($es,)* $($es),*) -> ($($body)*))};
-    (@accum (32, $($es:expr),*) -> ($($body:tt)*))
-        => {filled_array!(@accum (16, $($es,)* $($es),*) -> ($($body)*))};
-    (@accum (64, $($es:expr),*) -> ($($body:tt)*))
-        => {filled_array!(@accum (32, $($es,)* $($es),*) -> ($($body)*))};
-
-    (@as_expr $e:expr) => {$e};
-
-    [$e:expr; $n:tt] => { filled_array!(@accum ($n, $e) -> ()) };
-}
 
 static mut IRQ_HANDLERS: [Option<fn(usize)>; 32] = filled_array![None; 32];
 

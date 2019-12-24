@@ -74,22 +74,22 @@ SECTIONS
     _ebss = .;
   } > REGION_BSS
 
-  /* fictitious region that represents the memory available for the heap */
-  .heap (NOLOAD) :
-  {
-    _sheap = .;
-    . += _heap_size;
-    . = ALIGN(4);
-    _eheap = .;
-  } > REGION_HEAP
-
   /* fictitious region that represents the memory available for the stack */
   .stack (NOLOAD) :
   {
     _estack = .;
-    . = _stack_start;
+    PROVIDE(_stack_start = .);
+    . += _stack_size;
     _sstack = .;
   } > REGION_STACK
+
+  /* fictitious region that represents the memory available for the heap */
+  .heap (NOLOAD) :
+  {
+    . = ALIGN(4);
+    _sheap = .;
+    /* _eheap is defined elsewhere and is the remainder of RAM */
+  } > REGION_HEAP
 
   /* fake output .got section */
   /* Dynamic relocations are unsupported. This section is only used to detect
