@@ -118,7 +118,7 @@ impl MemoryManager {
         if page > tbl.len() {
             return Err(XousError::BadAddress);
         }
-        if tbl[page] != 0 {
+        if tbl[page] != 0 && tbl[page] != pid {
             return Err(XousError::OutOfMemory);
         }
         tbl[page] = pid;
