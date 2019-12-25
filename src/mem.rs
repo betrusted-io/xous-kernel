@@ -1,4 +1,5 @@
-use crate::syscalls::{XousError, XousPid};
+use crate::definitions::{XousError, XousPid, MemoryAddress};
+use core::num::NonZeroUsize;
 use xous_riscv::register::mstatus;
 
 const FLASH_START: usize = 0x20000000;
@@ -21,10 +22,10 @@ const RAM_PAGE_COUNT: usize = RAM_SIZE / PAGE_SIZE;
 const IO_PAGE_COUNT: usize = IO_SIZE;
 const LCD_PAGE_COUNT: usize = LCD_SIZE / PAGE_SIZE;
 pub struct MemoryManager {
-    flash: [u8; FLASH_PAGE_COUNT],
-    ram: [u8; RAM_PAGE_COUNT],
-    io: [u8; IO_PAGE_COUNT],
-    lcd: [u8; LCD_PAGE_COUNT],
+    flash: [XousPid; FLASH_PAGE_COUNT],
+    ram: [XousPid; RAM_PAGE_COUNT],
+    io: [XousPid; IO_PAGE_COUNT],
+    lcd: [XousPid; LCD_PAGE_COUNT],
 }
 
 extern "C" {
@@ -40,6 +41,10 @@ extern "C" {
     static mut _estack: usize;
     static mut _sstack: usize;
 
+    // Boundaries of the .text section
+    static mut _stext: usize;
+    static mut _etext: usize;
+
     // Boundaries of the heap
     static _sheap: usize;
     static _eheap: usize;
@@ -52,9 +57,9 @@ use core::mem::transmute;
 
 /// Initialzie the memory map.
 /// This will go through memory and map anything that the kernel is
-/// using to process 0xff, then allocate a pagetable for this process
-/// and place it at the usual offset.
-/// Finally, it will enable the MMU.
+/// using to process 1, then allocate a pagetable for this process
+/// and place it at the usual offset.  The MMU will not be enabled yet,
+/// as the process entry has not yet been created.
 impl MemoryManager {
     pub fn new() -> MemoryManager {
         let mut mm = MemoryManager {
@@ -80,6 +85,10 @@ impl MemoryManager {
         let end_stack = unsafe { transmute::<&usize, usize>(&_sstack) };
         let stack_range = (start_stack..end_stack).step_by(PAGE_SIZE);
 
+        let start_text = unsafe { transmute::<&usize, usize>(&_stext) };
+        let end_text = unsafe { transmute::<&usize, usize>(&_etext) };
+        let text_range = (start_text..end_text).step_by(PAGE_SIZE);
+
         for region in bss_range {
             mm.claim_page(region & !0xfff, 1).unwrap();
         }
@@ -92,8 +101,38 @@ impl MemoryManager {
             mm.claim_page(region & !0xfff, 1).unwrap();
         }
 
+        for region in text_range {
+            mm.claim_page(region & !0xfff, 1).unwrap();
+        }
+
         unsafe { mstatus::set_mie() };
         mm
+    }
+
+    pub fn alloc_page(&mut self, pid: XousPid) -> Result<MemoryAddress, XousError> {
+        // Go through all RAM pages looking for a free page.
+        // Optimization: start from the previous address.
+        for index in 0..RAM_PAGE_COUNT {
+            if self.ram[index] == 0 {
+                self.ram[index] = pid;
+                let page_addr = (index * PAGE_SIZE + RAM_START) as *mut u32;
+                // Zero-out the page
+                unsafe {
+                    for i in 0..PAGE_SIZE/4 {
+                        *page_addr.add(i) = 0;
+                    }
+                }
+                let new_page = unsafe { transmute::<*mut u32, usize>(page_addr) };
+                return Ok(NonZeroUsize::new(new_page).unwrap());
+            }
+        }
+        Err(XousError::OutOfMemory)
+    }
+
+    // Create an identity mapping, copying the kernel to itself.
+    pub fn create_identity(&mut self, satp: MemoryAddress, pid: XousPid) -> Result<(), XousError> {
+
+        Err(XousError::OutOfMemory)
     }
 
     fn claim_page(&mut self, addr: usize, pid: XousPid) -> Result<(), XousError> {
@@ -119,7 +158,7 @@ impl MemoryManager {
             return Err(XousError::BadAddress);
         }
         if tbl[page] != 0 && tbl[page] != pid {
-            return Err(XousError::OutOfMemory);
+            return Err(XousError::MemoryInUse);
         }
         tbl[page] = pid;
         Ok(())

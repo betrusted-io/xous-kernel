@@ -2,10 +2,12 @@
 #![no_main]
 
 extern crate xous_riscv;
-mod syscalls;
+mod definitions;
 mod irq;
 mod macros;
 mod mem;
+mod processtable;
+mod syscalls;
 
 pub use irq::sys_interrupt_claim;
 
@@ -13,7 +15,7 @@ use core::panic::PanicInfo;
 use xous_kernel_riscv_rt::xous_kernel_entry;
 use xous_riscv::register::{mcause, mstatus, mie, vmim, vmip};
 use mem::MemoryManager;
-
+use processtable::ProcessTable;
 
 #[panic_handler]
 fn handle_panic(_arg: &PanicInfo) -> ! {
@@ -35,7 +37,8 @@ fn xous_main() -> ! {
         mie::set_mext();
         mstatus::set_mie(); // Enable CPU interrupts
     }
-    let mm = MemoryManager::new();
+    let mut mm = MemoryManager::new();
+    let mut pt = ProcessTable::new(&mut mm);
     sys_interrupt_claim(2, |_| {
         let uart_ptr = 0xE000_1800 as *mut usize;
         print_str(uart_ptr, "hello, world!\r\n");

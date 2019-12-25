@@ -9,4 +9,4 @@ extern crate xous_riscv;
 // }
 
 // Allow consumers of this library to make syscalls
-pub mod syscalls;
+// pub mod syscalls;

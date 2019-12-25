@@ -52,6 +52,7 @@ SECTIONS
        This is required by LLD to ensure the LMA of the following .data
        section will have the correct alignment. */
     . = ALIGN(4);
+    _etext = .;
   } > REGION_RODATA
 
   .data : ALIGN(4)

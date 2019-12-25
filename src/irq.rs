@@ -1,4 +1,4 @@
-use crate::syscalls;
+use crate::definitions::XousError;
 use crate::filled_array;
 use xous_riscv::register::{mstatus, vmim};
 
@@ -28,15 +28,15 @@ pub fn handle(irqs_pending: usize) {
     }
 }
 
-pub fn sys_interrupt_claim(irq: usize, f: fn(usize)) -> Result<(), syscalls::XousError> {
+pub fn sys_interrupt_claim(irq: usize, f: fn(usize)) -> Result<(), XousError> {
     // Unsafe is required since we're accessing a static mut array.
     // However, we disable interrupts to prevent contention on this array.
     unsafe {
         mstatus::clear_mie();
         let result = if irq > IRQ_HANDLERS.len() {
-            Err(syscalls::XousError::InterruptNotFound)
+            Err(XousError::InterruptNotFound)
         } else if IRQ_HANDLERS[irq].is_some() {
-            Err(syscalls::XousError::InterruptInUse)
+            Err(XousError::InterruptInUse)
         } else {
             IRQ_HANDLERS[irq] = Some(f);
             // Note that the vexriscv "IRQ Mask" register is inverse-logic --
