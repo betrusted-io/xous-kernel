@@ -20,7 +20,7 @@ impl ProcessTable {
 
         // Allocate a root page table for PID 1
         pt.processes[1].satp = Some(mm.alloc_page(1).unwrap());
-        mm.create_identity(pt.processes[1].satp.unwrap(), 1);
+        mm.create_identity(pt.processes[1].satp.unwrap(), 1).expect("Unable to create identity mapping");
         pt
     }
 }
