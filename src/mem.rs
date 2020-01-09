@@ -28,6 +28,10 @@ pub struct MemoryManager {
     lcd: [XousPid; LCD_PAGE_COUNT],
 }
 
+struct PageTable {
+    entries: [usize; 1024],
+}
+
 extern "C" {
     // Boundaries of the .bss section
     static mut _ebss: usize;
@@ -55,6 +59,14 @@ extern "C" {
 
 use core::mem::transmute;
 
+macro_rules! mem_range {
+    ( $s:expr, $e:expr ) => {{
+        let start = unsafe { transmute::<&usize, usize>(&$s) };
+        let end = unsafe { transmute::<&usize, usize>(&$e) };
+        (start..end).step_by(PAGE_SIZE)
+    }}
+}
+
 /// Initialzie the memory map.
 /// This will go through memory and map anything that the kernel is
 /// using to process 1, then allocate a pagetable for this process
@@ -69,46 +81,10 @@ impl MemoryManager {
             lcd: [0; LCD_PAGE_COUNT],
         };
 
-        unsafe { mstatus::clear_mie() };
-
-        // Map the bss section
-        let start_bss = unsafe { transmute::<&usize, usize>(&_sbss) };
-        let end_bss = unsafe { transmute::<&usize, usize>(&_ebss) };
-        let bss_range = (start_bss..end_bss).step_by(PAGE_SIZE);
-
-        let start_data = unsafe { transmute::<&usize, usize>(&_sdata) };
-        let end_data = unsafe { transmute::<&usize, usize>(&_edata) };
-        let data_range = (start_data..end_data).step_by(PAGE_SIZE);
-
-        // Note: stack grows downwards so these are swapped.
-        let start_stack = unsafe { transmute::<&usize, usize>(&_estack) };
-        let end_stack = unsafe { transmute::<&usize, usize>(&_sstack) };
-        let stack_range = (start_stack..end_stack).step_by(PAGE_SIZE);
-
-        let start_text = unsafe { transmute::<&usize, usize>(&_stext) };
-        let end_text = unsafe { transmute::<&usize, usize>(&_etext) };
-        let text_range = (start_text..end_text).step_by(PAGE_SIZE);
-
-        for region in bss_range {
-            mm.claim_page(region & !0xfff, 1).unwrap();
-        }
-
-        for region in data_range {
-            mm.claim_page(region & !0xfff, 1).unwrap();
-        }
-
-        for region in stack_range {
-            mm.claim_page(region & !0xfff, 1).unwrap();
-        }
-
-        for region in text_range {
-            mm.claim_page(region & !0xfff, 1).unwrap();
-        }
-
-        unsafe { mstatus::set_mie() };
         mm
     }
 
+    /// Allocate a single page to the given process.
     pub fn alloc_page(&mut self, pid: XousPid) -> Result<MemoryAddress, XousError> {
         // Go through all RAM pages looking for a free page.
         // Optimization: start from the previous address.
@@ -129,13 +105,48 @@ impl MemoryManager {
         Err(XousError::OutOfMemory)
     }
 
-    // Create an identity mapping, copying the kernel to itself.
+    /// Create an identity mapping, copying the kernel to itself
     pub fn create_identity(&mut self, satp: MemoryAddress, pid: XousPid) -> Result<(), XousError> {
+        let pt = unsafe { transmute::<MemoryAddress, &mut PageTable>(satp) };
+
+        unsafe { mstatus::clear_mie() };
+
+        let ranges = [
+            mem_range!(&_sbss, &_ebss),
+            mem_range!(&_sdata, &_edata),
+            mem_range!(&_estack, &_sstack), // NOTE: Stack is reversed
+            mem_range!(&_stext, &_etext),
+        ];
+        for range in &ranges {
+            for region in range.clone() {
+                self.map_page(pt, pid)?;
+                self.claim_page(region & !0xfff, 1)?;
+            }
+        }
+
+        unsafe { mstatus::set_mie() };
 
         Err(XousError::OutOfMemory)
     }
 
+    fn map_page(&mut self, satp: &mut PageTable, pid: XousPid) -> Result<(), XousError> {
+        Err(XousError::OutOfMemory)
+    }
+
+    /// Mark a given address as being owned by the specified process ID
     fn claim_page(&mut self, addr: usize, pid: XousPid) -> Result<(), XousError> {
+        fn claim_page_inner(tbl: &mut [u8], addr: usize, pid: XousPid) -> Result<(), XousError> {
+            let page = addr / PAGE_SIZE;
+            if page > tbl.len() {
+                return Err(XousError::BadAddress);
+            }
+            if tbl[page] != 0 && tbl[page] != pid {
+                return Err(XousError::MemoryInUse);
+            }
+            tbl[page] = pid;
+            Ok(())
+        }
+
         // Ensure the address lies on a page boundary
         if addr & 0xfff != 0 {
             return Err(XousError::BadAlignment);
@@ -143,24 +154,13 @@ impl MemoryManager {
 
         match addr {
             FLASH_START..=FLASH_END => {
-                Self::claim_page_inner(&mut self.flash, addr - FLASH_START, pid)
+                claim_page_inner(&mut self.flash, addr - FLASH_START, pid)
             }
-            RAM_START..=RAM_END => Self::claim_page_inner(&mut self.ram, addr - RAM_START, pid),
-            IO_START..=IO_END => Self::claim_page_inner(&mut self.io, addr - IO_START, pid),
-            LCD_START..=LCD_END => Self::claim_page_inner(&mut self.lcd, addr - LCD_START, pid),
+            RAM_START..=RAM_END => claim_page_inner(&mut self.ram, addr - RAM_START, pid),
+            IO_START..=IO_END => claim_page_inner(&mut self.io, addr - IO_START, pid),
+            LCD_START..=LCD_END => claim_page_inner(&mut self.lcd, addr - LCD_START, pid),
             _ => Err(XousError::BadAddress),
         }
     }
 
-    fn claim_page_inner(tbl: &mut [u8], addr: usize, pid: XousPid) -> Result<(), XousError> {
-        let page = addr / PAGE_SIZE;
-        if page > tbl.len() {
-            return Err(XousError::BadAddress);
-        }
-        if tbl[page] != 0 && tbl[page] != pid {
-            return Err(XousError::MemoryInUse);
-        }
-        tbl[page] = pid;
-        Ok(())
-    }
 }
