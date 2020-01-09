@@ -3,6 +3,7 @@
 rustflags = [
   "-C", "link-arg=-Tmemory.x",
   "-C", "link-arg=-Tlink.x",
+  "-C", "linker-plugin-lto",
 ]
 
 [build]
