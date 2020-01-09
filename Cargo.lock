@@ -92,11 +92,20 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "vexriscv"
+version = "0.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "bare-metal 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bit_field 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "xous-kernel"
 version = "0.1.0"
 dependencies = [
+ "vexriscv 0.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "xous-kernel-riscv-rt 0.6.1",
- "xous-riscv 0.5.4",
 ]
 
 [[package]]
@@ -104,8 +113,8 @@ name = "xous-kernel-riscv-rt"
 version = "0.6.1"
 dependencies = [
  "r0 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "vexriscv 0.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "xous-kernel-riscv-rt-macros 0.1.6",
- "xous-riscv 0.5.4",
 ]
 
 [[package]]
@@ -116,14 +125,6 @@ dependencies = [
  "quote 0.6.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "syn 0.15.44 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "xous-riscv"
-version = "0.5.4"
-dependencies = [
- "bare-metal 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "bit_field 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [metadata]
@@ -140,3 +141,4 @@ dependencies = [
 "checksum semver-parser 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 "checksum syn 0.15.44 (registry+https://github.com/rust-lang/crates.io-index)" = "9ca4b3b69a77cbe1ffc9e198781b7acb0c7365a883670e8f1c1bc66fba79a5c5"
 "checksum unicode-xid 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "fc72304796d0818e357ead4e000d19c9c174ab23dc11093ac919054d20a6a7fc"
+"checksum vexriscv 0.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "a8cca4a24ec0049cadb38a5a0767529d28f3ea7bb5e5233b8f6cc02a1d8f0a51"

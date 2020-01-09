@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-extern crate xous_riscv;
+extern crate vexriscv;
 mod definitions;
 mod irq;
 mod macros;
@@ -13,7 +13,7 @@ pub use irq::sys_interrupt_claim;
 
 use core::panic::PanicInfo;
 use xous_kernel_riscv_rt::xous_kernel_entry;
-use xous_riscv::register::{mcause, mstatus, mie, vmim, vmip};
+use vexriscv::register::{mcause, mstatus, mie, vmim, vmip};
 use mem::MemoryManager;
 use processtable::ProcessTable;
 
@@ -39,6 +39,7 @@ fn xous_main() -> ! {
     }
     let mut mm = MemoryManager::new();
     let mut pt = ProcessTable::new(&mut mm);
+
     sys_interrupt_claim(2, |_| {
         let uart_ptr = 0xE000_1800 as *mut usize;
         print_str(uart_ptr, "hello, world!\r\n");
@@ -59,7 +60,7 @@ fn xous_main() -> ! {
     print_str(uart_ptr, "greetings!\r\n");
 
     loop {
-        unsafe { xous_riscv::asm::wfi() };
+        unsafe { vexriscv::asm::wfi() };
     }
 }
 

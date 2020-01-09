@@ -6,7 +6,7 @@ edition = "2018"
 description = "Core kernel for Xous, including task switching and memory management"
 
 [dependencies]
-xous-riscv = { path = "xous-riscv" }
+vexriscv = "0.0.2"
 xous-kernel-riscv-rt = { path = "xous-kernel-riscv-rt" }
 
 [profile.release]

@@ -1,6 +1,6 @@
 use crate::definitions::{XousError, XousPid, MemoryAddress};
 use core::num::NonZeroUsize;
-use xous_riscv::register::mstatus;
+use vexriscv::register::mstatus;
 
 const FLASH_START: usize = 0x20000000;
 const FLASH_SIZE: usize = 16_777_216;

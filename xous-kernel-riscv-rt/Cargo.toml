@@ -10,9 +10,9 @@ license = "ISC"
 
 [dependencies]
 r0 = "0.2.2"
-xous-riscv = { path = "../xous-riscv" }
+vexriscv = "0.0.2"
 xous-kernel-riscv-rt-macros = { path = "macros" }
 
 [dev-dependencies]
-xous-riscv = { path = "../xous-riscv" }
+vexriscv = "0.0.2"
 panic-halt = "0.2.0"

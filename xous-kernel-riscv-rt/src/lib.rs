@@ -253,13 +253,13 @@
 #![deny(missing_docs)]
 #![deny(warnings)]
 
-extern crate xous_riscv;
+extern crate vexriscv;
 extern crate xous_kernel_riscv_rt_macros as macros;
 extern crate r0;
 
 pub use macros::{xous_kernel_entry, pre_init};
 
-use xous_riscv::register::mstatus;
+use vexriscv::register::mstatus;
 
 #[export_name = "error: riscv-rt appears more than once in the dependency graph"]
 #[doc(hidden)]
@@ -341,11 +341,11 @@ pub unsafe extern "Rust" fn default_pre_init() {}
 #[doc(hidden)]
 #[no_mangle]
 pub extern "Rust" fn default_mp_hook() -> bool {
-    use xous_riscv::register::mhartid;
+    use vexriscv::register::mhartid;
     match mhartid::read() {
         0 => true,
         _ => loop {
-            unsafe { xous_riscv::asm::wfi() }
+            unsafe { vexriscv::asm::wfi() }
         },
     }
 }
