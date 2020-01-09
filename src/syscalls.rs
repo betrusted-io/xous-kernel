@@ -1,5 +1,18 @@
 use super::definitions::*;
 
+/// Claims an interrupt and unmasks it immediately.  The provided function will
+/// be called from within an interrupt context, but using the ordinary privilege level of
+/// the process.
+///
+/// # Errors
+///
+/// * **InterruptNotFound**: The specified interrupt isn't valid on this system
+/// * **InterruptInUse**: The specified interrupt has already been claimed
+#[allow(dead_code)]
+pub fn sys_interrupt_claim(irq: usize, f: fn(usize)) -> Result<(), XousError> {
+    crate::irq::sys_interrupt_claim(irq, f)
+}
+
 extern "Rust" {
     /// Allocates kernel structures for a new process, and returns the new PID.
     /// This removes `page_count` page tables from the calling process at `origin_address`
@@ -33,22 +46,27 @@ extern "Rust" {
     #[allow(dead_code)]
     pub fn sysi_process_suspend(pid: XousPid, cpu_id: XousCpuId) -> Result<(), XousError>;
 
-    /// Claims an interrupt and unmasks it immediately.  The provided function will
-    /// be called from within an interrupt context, but using the ordinary privilege level of
-    /// the process.
-    /// 
+    /// Locks the system by disabling interrupts.
+    ///
     /// # Errors
-    /// 
-    /// * **InterruptNotFound**: The specified interrupt isn't valid on this system
-    /// * **InterruptInUse**: The specified interrupt has already been claimed
+    ///
+    /// * **InterruptNotFound**: The system is not currently executing an interrupt.
     #[allow(dead_code)]
-    pub fn sys_interrupt_claim(irq: usize, f: fn(usize)) -> Result<(), XousError>;
+    pub fn sys_lock() -> Result<(), XousError>;
+
+    /// Unlocks the system by enabling interrupts
+    ///
+    /// # Errors
+    ///
+    /// * **InterruptNotFound**: The system is not currently locked.
+    #[allow(dead_code)]
+    pub fn sys_unlock() -> Result<(), XousError>;
 
     /// Returns the interrupt back to the operating system and masks it again.
     /// This function is implicitly called when a process exits.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// * **InterruptNotFound**: The specified interrupt doesn't exist, or isn't assigned
     ///                          to this process.
     #[allow(dead_code)]
