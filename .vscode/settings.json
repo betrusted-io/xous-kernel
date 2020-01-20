@@ -1,0 +1,23 @@
+{
+    "cSpell.words": [
+        "TXFULL",
+        "Uart",
+        "concat",
+        "ebss",
+        "edata",
+        "eheap",
+        "estack",
+        "etext",
+        "getc",
+        "mstatus",
+        "pagetable",
+        "putc",
+        "satp",
+        "sbss",
+        "sdata",
+        "sheap",
+        "sidata",
+        "sstack",
+        "stext"
+    ]
+}

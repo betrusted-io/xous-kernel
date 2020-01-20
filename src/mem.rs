@@ -1,4 +1,5 @@
-use crate::definitions::{XousError, XousPid, MemoryAddress};
+use crate::definitions::{MemoryAddress, XousError, XousPid};
+use crate::{print, println};
 use core::num::NonZeroUsize;
 use vexriscv::register::mstatus;
 
@@ -21,6 +22,7 @@ const FLASH_PAGE_COUNT: usize = FLASH_SIZE / PAGE_SIZE;
 const RAM_PAGE_COUNT: usize = RAM_SIZE / PAGE_SIZE;
 const IO_PAGE_COUNT: usize = IO_SIZE;
 const LCD_PAGE_COUNT: usize = LCD_SIZE / PAGE_SIZE;
+
 pub struct MemoryManager {
     flash: [XousPid; FLASH_PAGE_COUNT],
     ram: [XousPid; RAM_PAGE_COUNT],
@@ -28,6 +30,43 @@ pub struct MemoryManager {
     lcd: [XousPid; LCD_PAGE_COUNT],
 }
 
+impl core::fmt::Debug for MemoryManager {
+    fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
+        writeln!(fmt, "MemoryManager: ")?;
+        writeln!(
+            fmt,
+            "    flash: {:08x} .. {:08x} ({})",
+            FLASH_START,
+            FLASH_END,
+            self.flash.len()
+        )?;
+        writeln!(
+            fmt,
+            "    ram:   {:08x} .. {:08x} ({})",
+            RAM_START,
+            RAM_END,
+            self.ram.len()
+        )?;
+        writeln!(
+            fmt,
+            "    io:    {:08x} .. {:08x} ({})",
+            IO_START,
+            IO_END,
+            self.io.len()
+        )?;
+        writeln!(
+            fmt,
+            "    lcd:   {:08x} .. {:08x} ({})",
+            LCD_START,
+            LCD_END,
+            self.lcd.len()
+        )?;
+        Ok(())
+    }
+}
+
+/// A single RISC-V page table entry.  In order to resolve an address,
+/// we need two entries: the top level, followed by the lower level.
 struct PageTable {
     entries: [usize; 1024],
 }
@@ -59,6 +98,14 @@ extern "C" {
 
 use core::mem::transmute;
 
+/// Enable transmuting from pointers-to-addresses to addresses.
+/// This is required because the linker creates variables
+/// such as _stext that are located at specific offsets -- such
+/// as the start of the text section -- and their address is
+/// the actual piece of data we want.
+/// Rust really doesn't like going from addresses to values, so
+/// we transmute from one to the other in order to construct a
+/// range that we can loop through.
 macro_rules! mem_range {
     ( $s:expr, $e:expr ) => {{
         let start = unsafe { transmute::<&usize, usize>(&$s) };
@@ -67,7 +114,7 @@ macro_rules! mem_range {
     }}
 }
 
-/// Initialzie the memory map.
+/// Initialize the memory map.
 /// This will go through memory and map anything that the kernel is
 /// using to process 1, then allocate a pagetable for this process
 /// and place it at the usual offset.  The MMU will not be enabled yet,
@@ -80,35 +127,10 @@ impl MemoryManager {
             io: [0; IO_PAGE_COUNT],
             lcd: [0; LCD_PAGE_COUNT],
         };
+        println!("Created Memory Manager: {:?}", mm);
 
-        mm
-    }
-
-    /// Allocate a single page to the given process.
-    pub fn alloc_page(&mut self, pid: XousPid) -> Result<MemoryAddress, XousError> {
-        // Go through all RAM pages looking for a free page.
-        // Optimization: start from the previous address.
-        for index in 0..RAM_PAGE_COUNT {
-            if self.ram[index] == 0 {
-                self.ram[index] = pid;
-                let page_addr = (index * PAGE_SIZE + RAM_START) as *mut u32;
-                // Zero-out the page
-                unsafe {
-                    for i in 0..PAGE_SIZE/4 {
-                        *page_addr.add(i) = 0;
-                    }
-                }
-                let new_page = unsafe { transmute::<*mut u32, usize>(page_addr) };
-                return Ok(NonZeroUsize::new(new_page).unwrap());
-            }
-        }
-        Err(XousError::OutOfMemory)
-    }
-
-    /// Create an identity mapping, copying the kernel to itself
-    pub fn create_identity(&mut self, satp: MemoryAddress, pid: XousPid) -> Result<(), XousError> {
-        let pt = unsafe { transmute::<MemoryAddress, &mut PageTable>(satp) };
-
+        // Claim existing pages for PID 1, in preparation for turning on
+        // the MMU
         unsafe { mstatus::clear_mie() };
 
         let ranges = [
@@ -119,15 +141,48 @@ impl MemoryManager {
         ];
         for range in &ranges {
             for region in range.clone() {
-                self.map_page(pt, pid)?;
-                self.claim_page(region & !0xfff, 1)?;
+                mm.claim_page(region & !0xfff, 1)
+                    .expect("Unable to claim region for PID 1");
             }
         }
 
         unsafe { mstatus::set_mie() };
 
+        mm
+    }
+
+    /// Allocate a single page to the given process.
+    /// Ensures the page is zeroed out prior to handing it over to
+    /// the specified process.
+    pub fn alloc_page(&mut self, pid: XousPid) -> Result<MemoryAddress, XousError> {
+        // Go through all RAM pages looking for a free page.
+        // Optimization: start from the previous address.
+        println!("Allocating page for PID {}", pid);
+        for index in 0..RAM_PAGE_COUNT {
+            println!("    Checking {:08x}...", index * PAGE_SIZE + RAM_START);
+            if self.ram[index] == 0 {
+                self.ram[index] = pid;
+                let page_addr = (index * PAGE_SIZE + RAM_START) as *mut u32;
+                // Zero-out the page
+                unsafe {
+                    for i in 0..PAGE_SIZE / 4 {
+                        *page_addr.add(i) = 0;
+                    }
+                }
+                let new_page = unsafe { transmute::<*mut u32, usize>(page_addr) };
+                println!("    Page {:08x} is free", new_page);
+                return Ok(NonZeroUsize::new(new_page).unwrap());
+            }
+        }
         Err(XousError::OutOfMemory)
     }
+
+    // /// Create an identity mapping, copying the kernel to itself
+    // pub fn create_identity(&mut self, pid: XousPid) -> Result<(), XousError> {
+    //     let pt = unsafe { transmute::<MemoryAddress, &mut PageTable>(satp) };
+
+    //     Err(XousError::OutOfMemory)
+    // }
 
     fn map_page(&mut self, satp: &mut PageTable, pid: XousPid) -> Result<(), XousError> {
         Err(XousError::OutOfMemory)
@@ -153,14 +208,11 @@ impl MemoryManager {
         }
 
         match addr {
-            FLASH_START..=FLASH_END => {
-                claim_page_inner(&mut self.flash, addr - FLASH_START, pid)
-            }
+            FLASH_START..=FLASH_END => claim_page_inner(&mut self.flash, addr - FLASH_START, pid),
             RAM_START..=RAM_END => claim_page_inner(&mut self.ram, addr - RAM_START, pid),
             IO_START..=IO_END => claim_page_inner(&mut self.io, addr - IO_START, pid),
             LCD_START..=LCD_END => claim_page_inner(&mut self.lcd, addr - LCD_START, pid),
             _ => Err(XousError::BadAddress),
         }
     }
-
 }

@@ -2,6 +2,8 @@
 #![no_main]
 
 extern crate vexriscv;
+
+mod debug;
 mod definitions;
 mod irq;
 mod macros;
@@ -12,20 +14,14 @@ mod syscalls;
 pub use irq::sys_interrupt_claim;
 
 use core::panic::PanicInfo;
-use xous_kernel_riscv_rt::xous_kernel_entry;
-use vexriscv::register::{mcause, mstatus, mie, vmim, vmip};
 use mem::MemoryManager;
 use processtable::ProcessTable;
+use vexriscv::register::{mcause, mie, mstatus, vmim, vmip};
+use xous_kernel_riscv_rt::xous_kernel_entry;
 
 #[panic_handler]
 fn handle_panic(_arg: &PanicInfo) -> ! {
     loop {}
-}
-
-fn print_str(uart: *mut usize, s: &str) {
-    for c in s.bytes() {
-        unsafe { uart.write_volatile(c as usize) };
-    }
 }
 
 #[xous_kernel_entry]
@@ -37,30 +33,21 @@ fn xous_main() -> ! {
         mie::set_mext();
         mstatus::set_mie(); // Enable CPU interrupts
     }
+
+    let uart = debug::DEFAULT_UART;
+
+    // Enable "RX_EMPTY" interrupt
+    uart.enable_rx();
+
+    println!("Starting up...");
+    sys_interrupt_claim(2, debug::irq).unwrap();
+
     let mut mm = MemoryManager::new();
-    let mut pt = ProcessTable::new(&mut mm);
+    let mut _pt = ProcessTable::new(&mut mm);
 
-    sys_interrupt_claim(2, |_| {
-        let uart_ptr = 0xE000_1800 as *mut usize;
-        print_str(uart_ptr, "hello, world!\r\n");
-        // Acknowledge the IRQ
-        unsafe {
-            uart_ptr.add(0).read_volatile();
-
-            // Acknowledge the event
-            uart_ptr.add(4).write_volatile(3);
-        };
-    })
-    .unwrap();
-
-    // Enable interrupts
-    let uart_ptr = 0xE000_1800 as *mut usize;
-    unsafe { uart_ptr.add(4).write_volatile(3) };
-    unsafe { uart_ptr.add(5).write_volatile(3) };
-    print_str(uart_ptr, "greetings!\r\n");
 
     loop {
-        unsafe { vexriscv::asm::wfi() };
+        // unsafe { vexriscv::asm::wfi() };
     }
 }
 
@@ -69,7 +56,10 @@ pub fn trap_handler() {
     let mc = mcause::read();
     let irqs_pending = vmip::read();
 
-    if mc.is_exception() {}
+    if mc.is_exception() {
+        unsafe { vexriscv::asm::ebreak() };
+        loop {}
+    }
 
     if irqs_pending != 0 {
         irq::handle(irqs_pending);
