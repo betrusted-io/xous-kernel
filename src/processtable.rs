@@ -33,6 +33,9 @@ extern "Rust" {
         pt: ProcessTable,
     ) -> !;
 }
+extern "C" {
+    fn read_satp() -> usize;
+}
 
 impl ProcessTable {
     pub fn new(mut mm: MemoryManager, kmain: fn(MemoryManager, ProcessTable) -> !) -> ! {
@@ -43,7 +46,7 @@ impl ProcessTable {
         // Allocate a root page table for PID 1.  Also mark the "ASID" as "1"
         // for "PID 1"
         let root_page = mm.alloc_page(1).unwrap().get();
-        pt.processes[1].satp = (root_page >> 9) | (1 << 22);
+        pt.processes[1].satp = (root_page >> 12) | (1 << 22);
         mm.create_identity(&pt.processes[1])
             .expect("Unable to create identity mapping");
         println!("PID 1: {:?} root page @ {:08x}", pt.processes[1], root_page);
@@ -60,6 +63,7 @@ impl ProcessTable {
             mstatus::set_mpp(mstatus::MPP::Supervisor);
         };
         println!("MMU enabled, jumping to kmain");
+        println!("SATP: {:08x}", unsafe { read_satp() });
         unsafe { start_kmain(kmain, mm, pt) }
     }
 }

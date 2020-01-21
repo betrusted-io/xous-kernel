@@ -17,6 +17,7 @@ fn main() {
 
         println!("cargo:rustc-link-lib=static={}", name);
         println!("cargo:rustc-link-search={}", out_dir.display());
+        println!("cargo:rerun-if-changed=bin/{}.a", target);
     }
 
     // Put the linker script somewhere the linker can find it

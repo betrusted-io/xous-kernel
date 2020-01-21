@@ -24,3 +24,9 @@ start_kmain:
     add     a6, a7, zero
     add     a7, zero, zero
 	mret    // Return to kmain
+
+.global read_satp
+.text
+read_satp:
+    csrr    a0, satp
+    ret

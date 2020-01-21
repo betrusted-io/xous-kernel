@@ -19,7 +19,7 @@ pub use irq::sys_interrupt_claim;
 use core::panic::PanicInfo;
 use mem::MemoryManager;
 use processtable::ProcessTable;
-use vexriscv::register::{mcause, mie, mstatus, vmim, vmip};
+use vexriscv::register::{mcause, mepc, mie, mstatus, vmim, vmip};
 use xous_kernel_riscv_rt::xous_kernel_entry;
 
 #[panic_handler]
@@ -50,11 +50,10 @@ fn xous_main() -> ! {
     sys_interrupt_claim(2, debug::irq).unwrap();
 
     println!("Creating memory manager...");
-    let mut mm = MemoryManager::new();
+    let mm = MemoryManager::new();
 
     println!("Creating process table...");
     ProcessTable::new(mm, kmain);
-    panic!("fell off main");
 }
 
 fn kmain(mm: MemoryManager, pt: ProcessTable) -> ! {
@@ -76,6 +75,8 @@ pub fn trap_handler() {
     let irqs_pending = vmip::read();
 
     if mc.is_exception() {
+        println!("CPU Exception");
+        println!("{:?} @ PC: {:08x}", mc.cause(), mepc::read());
         unsafe { vexriscv::asm::ebreak() };
         loop {}
     }
