@@ -1,7 +1,7 @@
 use crate::definitions::{MemoryAddress, XousError, XousPid};
 use crate::mem::MemoryManager;
 use crate::{filled_array, print, println};
-use vexriscv::register::{satp, mstatus};
+use vexriscv::register::{mstatus, satp};
 
 const MAX_PROCESS_COUNT: usize = 256;
 
@@ -26,8 +26,16 @@ pub struct ProcessTable {
     processes: [Process; MAX_PROCESS_COUNT],
 }
 
+extern "Rust" {
+    fn start_kmain(
+        kmain: extern "Rust" fn(MemoryManager, ProcessTable) -> !,
+        mm: MemoryManager,
+        pt: ProcessTable,
+    ) -> !;
+}
+
 impl ProcessTable {
-    pub fn new(mm: &mut MemoryManager) -> Self {
+    pub fn new(mut mm: MemoryManager, kmain: fn(MemoryManager, ProcessTable) -> !) -> ! {
         let mut pt = ProcessTable {
             processes: filled_array![Process { satp: 0 }; 256],
         };
@@ -36,7 +44,7 @@ impl ProcessTable {
         // for "PID 1"
         let root_page = mm.alloc_page(1).unwrap().get();
         pt.processes[1].satp = (root_page >> 9) | (1 << 22);
-        mm.create_identity(&pt.processes[1], 1)
+        mm.create_identity(&pt.processes[1])
             .expect("Unable to create identity mapping");
         println!("PID 1: {:?} root page @ {:08x}", pt.processes[1], root_page);
         println!("Enabling MMU...");
@@ -51,7 +59,7 @@ impl ProcessTable {
             // Switch to Supervisor mode
             mstatus::set_mpp(mstatus::MPP::Supervisor);
         };
-        println!("MMU enabled");
-        pt
+        println!("MMU enabled, jumping to kmain");
+        unsafe { start_kmain(kmain, mm, pt) }
     }
 }

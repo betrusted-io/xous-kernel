@@ -25,8 +25,8 @@ const IO_PAGE_COUNT: usize = IO_SIZE;
 const LCD_PAGE_COUNT: usize = LCD_SIZE / PAGE_SIZE;
 
 pub struct MemoryManager {
-    flash: [XousPid; FLASH_PAGE_COUNT],
     ram: [XousPid; RAM_PAGE_COUNT],
+    flash: [XousPid; FLASH_PAGE_COUNT],
     io: [XousPid; IO_PAGE_COUNT],
     lcd: [XousPid; LCD_PAGE_COUNT],
 }
@@ -241,22 +241,25 @@ impl MemoryManager {
     }
 
     /// Create an identity mapping, copying the kernel to itself
-    pub fn create_identity(&mut self, process: &Process, pid: XousPid) -> Result<(), XousError> {
+    pub fn create_identity(&mut self, process: &Process) -> Result<(), XousError> {
         let root_page = (process.satp & ((1 << 22) - 1)) << 9;
         let pt = unsafe { &mut (*(root_page as *mut PageTable)) };
         println!("SATP value: {:08x}  Root page: {:08x}  pt: {:p}  pt: {:p}", process.satp, root_page, &pt, pt);
-        let flash_orig = self.flash.clone();
-        for (flash_idx, flash_pid) in flash_orig.iter().enumerate() {
-            if *flash_pid == pid {
-                // println!(
-                //     "Flash addr {:08x} owned by PID {}, mapping it as ident",
-                //     flash_idx * PAGE_SIZE + FLASH_START,
-                //     pid
-                // );
+
+        let ranges = [
+            mem_range!(&_sbss, &_ebss),
+            mem_range!(&_sdata, &_edata),
+            mem_range!(&_estack, &_sstack), // NOTE: Stack is reversed
+            mem_range!(&_stext, &_etext),
+        ];
+        for range in &ranges {
+            for region in range.clone() {
+                // mm.claim_page(region & !0xfff, 1)
+                // .expect("Unable to claim region for PID 1");
                 self.map_page(
                     pt,
-                    flash_idx * PAGE_SIZE + FLASH_START,
-                    flash_idx * PAGE_SIZE + FLASH_START,
+                    region,
+                    region,
                 )?;
                 print!("Entries mapped: >");
                 let mut i = 0;
@@ -270,6 +273,18 @@ impl MemoryManager {
                 println!("");
             }
         }
+        // let flash_orig = self.flash.clone();
+        // for (flash_idx, flash_pid) in flash_orig.iter().enumerate() {
+        //     if *flash_pid == pid {
+                // println!(
+                //     "Flash addr {:08x} owned by PID {}, mapping it as ident",
+                //     flash_idx * PAGE_SIZE + FLASH_START,
+                //     pid
+                // );
+        //     }
+        // }
+
+        // for (idx, page) in flash_orig.iter().enumerate() {
         Ok(())
     }
 

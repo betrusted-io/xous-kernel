@@ -12,6 +12,7 @@ mod macros;
 mod mem;
 mod processtable;
 mod syscalls;
+mod timer;
 
 pub use irq::sys_interrupt_claim;
 
@@ -39,6 +40,8 @@ fn xous_main() -> ! {
     }
 
     let uart = debug::DEFAULT_UART;
+    sys_interrupt_claim(0, timer::irq).unwrap();
+    timer::time_init();
 
     // Enable "RX_EMPTY" interrupt
     uart.enable_rx();
@@ -50,10 +53,19 @@ fn xous_main() -> ! {
     let mut mm = MemoryManager::new();
 
     println!("Creating process table...");
-    let mut _pt = ProcessTable::new(&mut mm);
+    ProcessTable::new(mm, kmain);
+    panic!("fell off main");
+}
 
+fn kmain(mm: MemoryManager, pt: ProcessTable) -> ! {
     println!("Entering main loop");
+    let mut last_time = timer::get_time();
     loop {
+        let new_time = timer::get_time();
+        if new_time >= last_time + 1000 {
+            last_time = new_time;
+            println!("Uptime: {} ms", new_time);
+        }
         // unsafe { vexriscv::asm::wfi() };
     }
 }
