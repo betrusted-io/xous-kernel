@@ -1,4 +1,5 @@
 use crate::definitions::{MemoryAddress, XousError, XousPid};
+use crate::processtable::Process;
 use crate::{print, println};
 use core::num::NonZeroUsize;
 use vexriscv::register::mstatus;
@@ -157,9 +158,9 @@ impl MemoryManager {
     pub fn alloc_page(&mut self, pid: XousPid) -> Result<MemoryAddress, XousError> {
         // Go through all RAM pages looking for a free page.
         // Optimization: start from the previous address.
-        println!("Allocating page for PID {}", pid);
+        // println!("Allocating page for PID {}", pid);
         for index in 0..RAM_PAGE_COUNT {
-            println!("    Checking {:08x}...", index * PAGE_SIZE + RAM_START);
+            // println!("    Checking {:08x}...", index * PAGE_SIZE + RAM_START);
             if self.ram[index] == 0 {
                 self.ram[index] = pid;
                 let page_addr = (index * PAGE_SIZE + RAM_START) as *mut u32;
@@ -170,22 +171,106 @@ impl MemoryManager {
                     }
                 }
                 let new_page = unsafe { transmute::<*mut u32, usize>(page_addr) };
-                println!("    Page {:08x} is free", new_page);
+                // println!("    Page {:08x} is free", new_page);
                 return Ok(NonZeroUsize::new(new_page).unwrap());
             }
         }
         Err(XousError::OutOfMemory)
     }
 
-    // /// Create an identity mapping, copying the kernel to itself
-    // pub fn create_identity(&mut self, pid: XousPid) -> Result<(), XousError> {
-    //     let pt = unsafe { transmute::<MemoryAddress, &mut PageTable>(satp) };
+    /// Map the given page to the specified process table.  If necessary,
+    /// allocate a new page.
+    ///
+    /// # Errors
+    ///
+    /// * OutOfMemory - Tried to allocate a new pagetable, but ran out of memory.
+    fn map_page(
+        &mut self,
+        root: &mut PageTable,
+        phys: usize,
+        virt: usize,
+    ) -> Result<(), XousError> {
+        let ppn1 = (phys >> 20) & ((1 << 12) - 1);
+        let ppn0 = (phys >> 10) & ((1 << 10) - 1);
+        let ppo = (phys >> 0) & ((1 << 12) - 1);
+        let vpn1 = (virt >> 22) & ((1 << 10) - 1);
+        let vpn0 = (virt >> 10) & ((1 << 10) - 1);
+        let vpo = (virt >> 0) & ((1 << 12) - 1);
 
-    //     Err(XousError::OutOfMemory)
-    // }
+        println!(
+            "Mapping phys: {:08x} -> virt: {:08x}  (vpn1: {:04x}  vpn0: {:04x}    ppn1: {:04x}  ppn0: {:04x})",
+            phys, virt, vpn1, vpn0, ppn1, ppn0
+        );
+        assert!(ppn1 < 4096);
+        assert!(ppn0 < 1024);
+        assert!(ppo < 4096);
+        assert!(vpn1 < 1024);
+        assert!(vpn0 < 1024);
+        assert!(vpo < 4096);
 
-    fn map_page(&mut self, satp: &mut PageTable, pid: XousPid) -> Result<(), XousError> {
-        Err(XousError::OutOfMemory)
+        let ref mut l1_pt = root.entries;
+        println!("l1_pt is at {:p}  ({:p})", &l1_pt, &l1_pt[vpn1]);
+
+        // Allocate a new level 1 pagetable entry if one doesn't exist.
+        if l1_pt[vpn1] & 1 == 0 {
+            println!("    top-level VPN1 {:04x}: {:08x} (will allocate a new one)", vpn1, l1_pt[vpn1]);
+            // Allocate the page to the kernel (PID 1)
+            let new_addr = self.alloc_page(1)?.get();
+            println!(
+                "    Allocated new top-level page for VPN1 {:04x} in process @ {:08x}",
+                vpn1, new_addr
+            );
+
+            // Mark this entry as a leaf node (WRX as 0), and indicate
+            // it is a valid page by setting "V".
+            l1_pt[vpn1] = (((new_addr >> 10) & ((1 << 22) - 1)) << 10) | 1;
+            println!("    New top-level page entry: {:08x}", l1_pt[vpn1]);
+        }
+
+        let mut l0_pt = unsafe {
+            let tmp = (l1_pt[vpn1] & ((1 << 10) - 1)) as *mut PageTable;
+            (*tmp).entries
+        };
+
+        // Allocate a new level 0 pagetable entry if one doesn't exist.
+        if l0_pt[vpn0] & 1 != 0 {
+            panic!("Page already allocated!");
+        }
+        l0_pt[vpn0] = (ppn1 << 20) | (ppn0 << 10) | 1 | 0xe;
+        Ok(())
+    }
+
+    /// Create an identity mapping, copying the kernel to itself
+    pub fn create_identity(&mut self, process: &Process, pid: XousPid) -> Result<(), XousError> {
+        let root_page = (process.satp & ((1 << 22) - 1)) << 9;
+        let pt = unsafe { &mut (*(root_page as *mut PageTable)) };
+        println!("SATP value: {:08x}  Root page: {:08x}  pt: {:p}  pt: {:p}", process.satp, root_page, &pt, pt);
+        let flash_orig = self.flash.clone();
+        for (flash_idx, flash_pid) in flash_orig.iter().enumerate() {
+            if *flash_pid == pid {
+                // println!(
+                //     "Flash addr {:08x} owned by PID {}, mapping it as ident",
+                //     flash_idx * PAGE_SIZE + FLASH_START,
+                //     pid
+                // );
+                self.map_page(
+                    pt,
+                    flash_idx * PAGE_SIZE + FLASH_START,
+                    flash_idx * PAGE_SIZE + FLASH_START,
+                )?;
+                print!("Entries mapped: >");
+                let mut i = 0;
+                for (entry_idx, entry) in pt.entries.iter().enumerate() {
+                    i = i + 1;
+                    if *entry != 0 {
+                        print!(" {}:{:08x}", entry_idx, entry);
+                    }
+                }
+                println!(" < ({})", i);
+                println!("");
+            }
+        }
+        Ok(())
     }
 
     /// Mark a given address as being owned by the specified process ID

@@ -3,7 +3,9 @@
 
 extern crate vexriscv;
 
+#[macro_use]
 mod debug;
+
 mod definitions;
 mod irq;
 mod macros;
@@ -20,7 +22,9 @@ use vexriscv::register::{mcause, mie, mstatus, vmim, vmip};
 use xous_kernel_riscv_rt::xous_kernel_entry;
 
 #[panic_handler]
-fn handle_panic(_arg: &PanicInfo) -> ! {
+fn handle_panic(arg: &PanicInfo) -> ! {
+    println!("PANIC!");
+    println!("Details: {:?}", arg);
     loop {}
 }
 
@@ -42,10 +46,13 @@ fn xous_main() -> ! {
     println!("Starting up...");
     sys_interrupt_claim(2, debug::irq).unwrap();
 
+    println!("Creating memory manager...");
     let mut mm = MemoryManager::new();
+
+    println!("Creating process table...");
     let mut _pt = ProcessTable::new(&mut mm);
 
-
+    println!("Entering main loop");
     loop {
         // unsafe { vexriscv::asm::wfi() };
     }
