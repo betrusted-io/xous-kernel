@@ -1,12 +1,27 @@
-use crate::definitions::{MemoryAddress, XousError, XousPid};
+use crate::definitions::{MemoryAddress, MemorySize, XousError, XousPid};
 use crate::mem::MemoryManager;
 use crate::{filled_array, print, println};
-use vexriscv::register::{mstatus, satp};
+use vexriscv::register::{mepc, mstatus, satp};
 
 const MAX_PROCESS_COUNT: usize = 256;
+static mut CURRENT_SATP: usize = 0;
 
 pub struct Process {
     pub satp: usize,
+}
+
+pub struct ProcessTableInner {
+    processes: [Process; MAX_PROCESS_COUNT],
+}
+
+pub struct ProcessTable {}
+
+static mut PT: ProcessTableInner = ProcessTableInner {
+    processes: filled_array![Process { satp: 0 }; 256],
+};
+
+extern "Rust" {
+    fn kmain(mm: MemoryManager, pt: ProcessTable) -> !;
 }
 
 impl core::fmt::Debug for Process {
@@ -22,48 +37,77 @@ impl core::fmt::Debug for Process {
     }
 }
 
-pub struct ProcessTable {
-    processes: [Process; MAX_PROCESS_COUNT],
-}
+impl ProcessTableInner {
+    /// Switch to the new PID when we return to supervisor mode
+    pub fn switch_to(&self, pid: XousPid, pc: usize) -> Result<(), XousError> {
+        if pid == 0 {
+            return Err(XousError::ProcessNotFound);
+        }
+        if pid >= 255 {
+            return Err(XousError::ProcessNotFound);
+        }
 
-extern "Rust" {
-    fn start_kmain(
-        kmain: extern "Rust" fn(MemoryManager, ProcessTable) -> !,
-        mm: MemoryManager,
-        pt: ProcessTable,
-    ) -> !;
-}
-extern "C" {
-    fn read_satp() -> usize;
+        let pid = pid as usize;
+        let new_satp = self.processes[pid].satp;
+        if new_satp & (1 << 31) == 0 {
+            return Err(XousError::ProcessNotFound);
+        }
+
+        unsafe {
+            CURRENT_SATP = new_satp;
+        }
+        satp::write(new_satp);
+        mepc::write(pc);
+        Ok(())
+    }
+
+    pub fn alloc_pid(&mut self) -> Result<XousPid, XousError> {
+        for (idx, process) in self.processes.iter().enumerate() {
+            if process.satp == 0 {
+                return Ok((idx + 1) as XousPid);
+            }
+        }
+        Err(XousError::ProcessNotChild)
+    }
 }
 
 impl ProcessTable {
-    pub fn new(mut mm: MemoryManager, kmain: fn(MemoryManager, ProcessTable) -> !) -> ! {
-        let mut pt = ProcessTable {
-            processes: filled_array![Process { satp: 0 }; 256],
-        };
-
-        // Allocate a root page table for PID 1.  Also mark the "ASID" as "1"
-        // for "PID 1"
-        let root_page = mm.alloc_page(1).unwrap().get();
-        pt.processes[1].satp = (root_page >> 12) | (1 << 22);
-        mm.create_identity(&pt.processes[1])
-            .expect("Unable to create identity mapping");
-        println!("PID 1: {:?} root page @ {:08x}", pt.processes[1], root_page);
-        println!("Enabling MMU...");
-        unsafe {
-            // Set the MMU pointer to our identity mapping
-            satp::set(
-                satp::Mode::Sv32,
-                (pt.processes[1].satp >> 22) & ((1 << 9) - 1),
-                (pt.processes[1].satp >> 0) & ((1 << 22) - 1),
-            );
-
-            // Switch to Supervisor mode
-            mstatus::set_mpp(mstatus::MPP::Supervisor);
-        };
-        println!("MMU enabled, jumping to kmain");
-        println!("SATP: {:08x}", unsafe { read_satp() });
-        unsafe { start_kmain(kmain, mm, pt) }
+    pub fn new() -> Result<ProcessTable, XousError> {
+        Ok(ProcessTable {})
     }
+
+    pub fn create_process(&mut self, mm: &mut MemoryManager) -> Result<XousPid, XousError> {
+        let mut pt = unsafe { &mut PT };
+        let pid = pt.alloc_pid()?;
+        let root_page = mm.alloc_page(pid).expect("Couldn't allocate memory for new process page tables");
+        let root_page = root_page.get();
+        pt.processes[pid as usize].satp = (root_page >> 12) | ((pid as usize) << 22) | (1 << 31);
+        Ok(pid)
+    }
+
+    pub fn satp_for(&self, pid: XousPid) -> Result<MemoryAddress, XousError> {
+        let pt = unsafe { &PT };
+        match MemoryAddress::new(pt.processes[pid as usize].satp) {
+            Some(addr) => Ok(addr),
+            None => Err(XousError::ProcessNotFound)
+        }
+    }
+
+    pub fn switch_to(&self, pid: XousPid, pc: usize) -> Result<(), XousError> {
+        let pt = unsafe { &PT };
+        pt.switch_to(pid, pc)
+    }
+}
+
+pub fn sys_memory_allocate(
+    phys: Option<MemoryAddress>,
+    virt: Option<MemoryAddress>,
+    size: MemorySize,
+) -> Result<MemoryAddress, XousError> {
+    match phys {
+        Some(addr) => {}
+        None => {}
+    }
+
+    Ok(MemoryAddress::new(4096).unwrap())
 }

@@ -78,10 +78,10 @@ SECTIONS
   /* fictitious region that represents the memory available for the stack */
   .stack (NOLOAD) :
   {
-    _estack = .;
-    PROVIDE(_stack_start = .);
-    . += _stack_size;
     _sstack = .;
+    . += _stack_size;
+    . = ALIGN(4096);
+    _estack = .;
   } > REGION_STACK
 
   /* fictitious region that represents the memory available for the heap */

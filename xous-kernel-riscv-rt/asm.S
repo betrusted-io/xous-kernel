@@ -72,7 +72,7 @@ _start:
     bgtu a2, t0, abort
 #endif // SKIP_MULTICORE
     // Allocate stacks
-    la sp, _stack_start
+    la sp, _estack
 #if !defined(SKIP_MULTICORE)
     lui t0, %hi(_hart_stack_size)
     add t0, t0, %lo(_hart_stack_size)

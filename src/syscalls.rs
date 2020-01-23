@@ -13,6 +13,28 @@ pub fn sys_interrupt_claim(irq: usize, f: fn(usize)) -> Result<(), XousError> {
     crate::irq::sys_interrupt_claim(irq, f)
 }
 
+/// Allocates pages of memory, equal to a total of `size
+/// bytes.  If a physical address is specified, then this
+/// can be used to allocate regions such as memory-mapped I/O.
+/// If a virtual address is specified, then the returned
+/// pages are located at that address.  Otherwise, they
+/// are located at an unspecified offset.
+///
+/// # Errors
+///
+/// * **BadAlignment**: Either the physical or virtual addresses aren't page-aligned,
+///                     or the size isn't a multiple of the page width.
+/// * **OutOfMemory**: A contiguous chunk of memory couldn't be found, or the system's
+///                    memory size has been exceeded.
+#[allow(dead_code)]
+pub fn sys_memory_allocate(
+    phys: Option<MemoryAddress>,
+    virt: Option<MemoryAddress>,
+    size: MemorySize,
+) -> Result<MemoryAddress, XousError> {
+    crate::processtable::sys_memory_allocate(phys, virt, size)
+}
+
 extern "Rust" {
     /// Allocates kernel structures for a new process, and returns the new PID.
     /// This removes `page_count` page tables from the calling process at `origin_address`
@@ -149,24 +171,6 @@ extern "Rust" {
     /// * **ProcessNotChild**: The requested process is not our child process
     #[allow(dead_code)]
     pub fn sys_process_terminate(process_id: XousPid) -> Result<(), XousError>;
-
-    /// Allocates pages of memory, equal to a total of `size
-    /// bytes.  If a physical address is specified, then this
-    /// can be used to allocate regions such as memory-mapped I/O.
-    /// If a virtual address is specified, then the returned
-    /// pages are located at that address.  Otherwise, they
-    /// are located at an unspecified offset.
-    ///
-    /// # Errors
-    ///
-    /// * **BadAlignment**: Either the physical or virtual addresses aren't page-aligned, or the size isn't a multiple of the page width.
-    /// * **OutOfMemory**: A contiguous chunk of memory couldn't be found, or the system's memory size has been exceeded.
-    #[allow(dead_code)]
-    pub fn sys_memory_allocate(
-        phys: Option<MemoryAddress>,
-        virt: Option<MemoryAddress>,
-        size: MemorySize,
-    ) -> Result<MemoryAddress, XousError>;
 
     /// Equivalent to the Unix `sbrk` call.  Adjusts the
     /// heap size to be equal to the specified value.  Heap

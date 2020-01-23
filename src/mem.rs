@@ -24,45 +24,60 @@ const RAM_PAGE_COUNT: usize = RAM_SIZE / PAGE_SIZE;
 const IO_PAGE_COUNT: usize = IO_SIZE;
 const LCD_PAGE_COUNT: usize = LCD_SIZE / PAGE_SIZE;
 
-pub struct MemoryManager {
+pub struct MemoryManagerInner {
     ram: [XousPid; RAM_PAGE_COUNT],
     flash: [XousPid; FLASH_PAGE_COUNT],
     io: [XousPid; IO_PAGE_COUNT],
     lcd: [XousPid; LCD_PAGE_COUNT],
 }
 
-impl core::fmt::Debug for MemoryManager {
+pub struct MemoryManager {}
+
+static mut MM: MemoryManagerInner = MemoryManagerInner {
+    flash: [0; FLASH_PAGE_COUNT],
+    ram: [0; RAM_PAGE_COUNT],
+    io: [0; IO_PAGE_COUNT],
+    lcd: [0; LCD_PAGE_COUNT],
+};
+
+impl core::fmt::Debug for MemoryManagerInner {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
-        writeln!(fmt, "MemoryManager: ")?;
+        writeln!(fmt, "Ranges: ")?;
         writeln!(
             fmt,
-            "    flash: {:08x} .. {:08x} ({})",
+            "    flash: {:08x} .. {:08x} ({} pages)",
             FLASH_START,
             FLASH_END,
             self.flash.len()
         )?;
         writeln!(
             fmt,
-            "    ram:   {:08x} .. {:08x} ({})",
+            "    ram:   {:08x} .. {:08x} ({} pages)",
             RAM_START,
             RAM_END,
             self.ram.len()
         )?;
         writeln!(
             fmt,
-            "    io:    {:08x} .. {:08x} ({})",
+            "    io:    {:08x} .. {:08x} ({} pages)",
             IO_START,
             IO_END,
             self.io.len()
         )?;
         writeln!(
             fmt,
-            "    lcd:   {:08x} .. {:08x} ({})",
+            "    lcd:   {:08x} .. {:08x} ({} pages)",
             LCD_START,
             LCD_END,
             self.lcd.len()
         )?;
         Ok(())
+    }
+}
+
+impl core::fmt::Debug for MemoryManager {
+    fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
+        unsafe { write!(fmt, "{:?}", MM) }
     }
 }
 
@@ -121,48 +136,48 @@ macro_rules! mem_range {
 /// and place it at the usual offset.  The MMU will not be enabled yet,
 /// as the process entry has not yet been created.
 impl MemoryManager {
-    pub fn new() -> MemoryManager {
-        let mut mm = MemoryManager {
-            flash: [0; FLASH_PAGE_COUNT],
-            ram: [0; RAM_PAGE_COUNT],
-            io: [0; IO_PAGE_COUNT],
-            lcd: [0; LCD_PAGE_COUNT],
-        };
-        println!("Created Memory Manager: {:?}", mm);
+    pub fn new() -> Result<MemoryManager, XousError> {
+        Ok(MemoryManager {})
+    }
+
+    pub fn init(&mut self) -> Result<(), XousError> {
+        println!("Initializing Memory Manager: {:?}", self);
 
         // Claim existing pages for PID 1, in preparation for turning on
-        // the MMU
+        // the MMU.
         unsafe { mstatus::clear_mie() };
 
         let mut ranges = [
             mem_range!(&_sbss, &_ebss),
             mem_range!(&_sdata, &_edata),
-            mem_range!(&_estack, &_sstack), // NOTE: Stack is reversed
+            mem_range!(&_sstack, &_estack),
             mem_range!(&_stext, &_etext),
         ];
         for range in &mut ranges {
             for region in range {
-                mm.claim_page(region & !0xfff, 1)
-                    .expect("Unable to claim region for PID 1");
+                self.claim_page(region & !0xfff, 1)?;
             }
         }
 
         unsafe { mstatus::set_mie() };
 
-        mm
+        Ok(())
     }
 
     /// Allocate a single page to the given process.
     /// Ensures the page is zeroed out prior to handing it over to
     /// the specified process.
     pub fn alloc_page(&mut self, pid: XousPid) -> Result<MemoryAddress, XousError> {
+        assert!(pid != 0);
+        let mut mm = unsafe { &mut MM };
+
         // Go through all RAM pages looking for a free page.
         // Optimization: start from the previous address.
         // println!("Allocating page for PID {}", pid);
         for index in 0..RAM_PAGE_COUNT {
             // println!("    Checking {:08x}...", index * PAGE_SIZE + RAM_START);
-            if self.ram[index] == 0 {
-                self.ram[index] = pid;
+            if mm.ram[index] == 0 {
+                mm.ram[index] = pid;
                 let page_addr = (index * PAGE_SIZE + RAM_START) as *mut u32;
                 // Zero-out the page
                 unsafe {
@@ -172,7 +187,7 @@ impl MemoryManager {
                 }
                 let new_page = unsafe { transmute::<*mut u32, usize>(page_addr) };
                 // println!("    Page {:08x} is free", new_page);
-                return Ok(NonZeroUsize::new(new_page).unwrap());
+                return Ok(NonZeroUsize::new(new_page).expect("Allocated an invalid page"));
             }
         }
         Err(XousError::OutOfMemory)
@@ -246,55 +261,36 @@ impl MemoryManager {
     }
 
     /// Create an identity mapping, copying the kernel to itself
-    pub fn create_identity(&mut self, process: &Process) -> Result<(), XousError> {
-        let root_page = (process.satp & ((1 << 22) - 1)) << 12;
+    pub fn create_identity(&mut self, satp: MemoryAddress) -> Result<(), XousError> {
+        let root_page = (satp.get() & ((1 << 22) - 1)) << 12;
+        assert!(root_page >= RAM_START);
+        assert!(root_page < RAM_END);
+
         let pt = unsafe { &mut (*(root_page as *mut PageTable)) };
         println!(
-            "SATP value: {:08x}  Root page: {:08x}  pt: {:p}  pt: {:p}",
-            process.satp, root_page, &pt, pt
+            "Root page: {:08x}  pt: {:p}  pt: {:p}",
+            root_page, &pt, pt
         );
 
         let mut ranges = [
             mem_range!(&_sbss, &_ebss),
             mem_range!(&_sdata, &_edata),
-            mem_range!(&_estack, &_sstack), // NOTE: Stack is reversed
+            mem_range!(&_sstack, &_estack),
             mem_range!(&_stext, &_etext),
         ];
         for range in &mut ranges {
             for region in range {
-                // mm.claim_page(region & !0xfff, 1)
-                // .expect("Unable to claim region for PID 1");
                 self.map_page(pt, region, region)?;
-                // print!("Entries mapped: >");
-                // let mut i = 0;
-                // for (entry_idx, entry) in pt.entries.iter().enumerate() {
-                //     i = i + 1;
-                //     if *entry != 0 {
-                //         print!(" {}:{:08x}", entry_idx, entry);
-                //     }
-                // }
-                // println!(" < ({})", i);
                 println!("");
             }
         }
-        self.map_page(pt, 0xE000_1800, 0xE000_1800)?;
-        // let flash_orig = self.flash.clone();
-        // for (flash_idx, flash_pid) in flash_orig.iter().enumerate() {
-        //     if *flash_pid == pid {
-        // println!(
-        //     "Flash addr {:08x} owned by PID {}, mapping it as ident",
-        //     flash_idx * PAGE_SIZE + FLASH_START,
-        //     pid
-        // );
-        //     }
-        // }
-
-        // for (idx, page) in flash_orig.iter().enumerate() {
         Ok(())
     }
 
     /// Mark a given address as being owned by the specified process ID
     fn claim_page(&mut self, addr: usize, pid: XousPid) -> Result<(), XousError> {
+        let mut mm = unsafe { &mut MM };
+
         fn claim_page_inner(tbl: &mut [u8], addr: usize, pid: XousPid) -> Result<(), XousError> {
             let page = addr / PAGE_SIZE;
             if page > tbl.len() {
@@ -313,10 +309,10 @@ impl MemoryManager {
         }
 
         match addr {
-            FLASH_START..=FLASH_END => claim_page_inner(&mut self.flash, addr - FLASH_START, pid),
-            RAM_START..=RAM_END => claim_page_inner(&mut self.ram, addr - RAM_START, pid),
-            IO_START..=IO_END => claim_page_inner(&mut self.io, addr - IO_START, pid),
-            LCD_START..=LCD_END => claim_page_inner(&mut self.lcd, addr - LCD_START, pid),
+            FLASH_START..=FLASH_END => claim_page_inner(&mut mm.flash, addr - FLASH_START, pid),
+            RAM_START..=RAM_END => claim_page_inner(&mut mm.ram, addr - RAM_START, pid),
+            IO_START..=IO_END => claim_page_inner(&mut mm.io, addr - IO_START, pid),
+            LCD_START..=LCD_END => claim_page_inner(&mut mm.lcd, addr - LCD_START, pid),
             _ => Err(XousError::BadAddress),
         }
     }

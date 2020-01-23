@@ -1,4 +1,6 @@
 use core::fmt::{Error, Write};
+use crate::MemoryManager;
+use crate::definitions::XousError;
 
 #[macro_export]
 macro_rules! print
@@ -36,6 +38,10 @@ impl Uart {
     //         base: base_addr as *mut usize,
     //     }
     // }
+    pub fn init(&self) -> Result<(), XousError> {
+        // mm.claim_page(self.base as usize, 1)
+        Ok(())
+    }
 
     pub fn enable_rx(self) {
         unsafe {

@@ -7,6 +7,7 @@ extern crate vexriscv;
 mod debug;
 
 mod definitions;
+mod exception;
 mod irq;
 mod macros;
 mod mem;
@@ -19,7 +20,7 @@ pub use irq::sys_interrupt_claim;
 use core::panic::PanicInfo;
 use mem::MemoryManager;
 use processtable::ProcessTable;
-use vexriscv::register::{mcause, mepc, mie, mstatus, vmim, vmip};
+use vexriscv::register::{mcause, mepc, mie, mstatus, mtval, satp, vmim, vmip};
 use xous_kernel_riscv_rt::xous_kernel_entry;
 
 #[panic_handler]
@@ -29,42 +30,78 @@ fn handle_panic(arg: &PanicInfo) -> ! {
     loop {}
 }
 
+extern "Rust" {
+    fn return_from_interrupt() -> !;
+}
+extern "C" {
+    /// Debug function to read the current SATP.  Useful since Renode
+    /// doesn't support reading it any other way.
+    fn read_satp() -> usize;
+}
+
 #[xous_kernel_entry]
-fn xous_main() -> ! {
+fn mmu_init() -> ! {
+    let mut mm = MemoryManager::new().expect("Couldn't create memory manager");
+    mm.init().expect("Couldn't initialize memory manager");
+
+    let mut pt = ProcessTable::new().expect("Couldn't create process table");
+
+    // Allocate a page to PID 1 to use as the root page table, then create
+    // an identity mapping in preparation for enabling the MMU.
+    let process1 = pt
+        .create_process(&mut mm)
+        .expect("Couldn't create process for PID1");
+    let pid1_satp = pt.satp_for(process1).expect("Couldn't find SATP for PID1");
+    mm.create_identity(pid1_satp)
+        .expect("Couldn't create identity mapping for PID1");
+
+    println!("MMU enabled, jumping to kmain");
+    pt.switch_to(process1, kmain as usize).expect("Couldn't switch to PID1");
+    println!("SATP: {:08x}", unsafe { read_satp() });
+
+    unsafe {
+        mstatus::set_spp(mstatus::SPP::Supervisor);
+        mstatus::set_mpp(mstatus::MPP::Supervisor);
+        println!("kmain: MSTATUS: {:?}", mstatus::read());
+        return_from_interrupt()
+    }
+}
+
+/// This function runs with the MMU enabled, as part of PID 1
+#[no_mangle]
+fn kmain() -> ! {
     unsafe {
         vmim::write(0); // Disable all machine interrupts
         mie::set_msoft();
         mie::set_mtimer();
         mie::set_mext();
+        mstatus::set_mpp(mstatus::MPP::Supervisor);
+        mstatus::set_spie();
         mstatus::set_mie(); // Enable CPU interrupts
     }
 
+    println!("kmain: SATP: {:08x}", satp::read().bits());
+    println!("kmain: MSTATUS: {:?}", mstatus::read());
+
     let uart = debug::DEFAULT_UART;
-    sys_interrupt_claim(0, timer::irq).unwrap();
-    timer::time_init();
+    uart.init();
+
+    // sys_interrupt_claim(0, timer::irq).unwrap();
+    // timer::time_init();
 
     // Enable "RX_EMPTY" interrupt
     uart.enable_rx();
 
-    println!("Starting up...");
-    sys_interrupt_claim(2, debug::irq).unwrap();
+    sys_interrupt_claim(2, debug::irq).expect("Couldn't claim interrupt 2");
 
-    println!("Creating memory manager...");
-    let mm = MemoryManager::new();
-
-    println!("Creating process table...");
-    ProcessTable::new(mm, kmain);
-}
-
-fn kmain(mm: MemoryManager, pt: ProcessTable) -> ! {
     println!("Entering main loop");
-    let mut last_time = timer::get_time();
+    // let mut last_time = timer::get_time();
     loop {
-        let new_time = timer::get_time();
-        if new_time >= last_time + 1000 {
-            last_time = new_time;
-            println!("Uptime: {} ms", new_time);
-        }
+        // let new_time = timer::get_time();
+        // if new_time >= last_time + 1000 {
+        //     last_time = new_time;
+        //     println!("Uptime: {} ms", new_time);
+        // }
         // unsafe { vexriscv::asm::wfi() };
     }
 }
@@ -76,7 +113,8 @@ pub fn trap_handler() {
 
     if mc.is_exception() {
         println!("CPU Exception");
-        println!("{:?} @ PC: {:08x}", mc.cause(), mepc::read());
+        let ex = exception::RiscvException::from_regs(mc.bits(), mepc::read(), mtval::read());
+        println!("{}", ex);
         unsafe { vexriscv::asm::ebreak() };
         loop {}
     }
