@@ -9,12 +9,20 @@
 #endif
 #define REGBYTES (1 << LOG_REGBYTES)
 
+.global enable_mmu
 .global return_from_interrupt
 .text
+enable_mmu:
+    la      sp, _estack // Trash the stack and start over
 return_from_interrupt:
-    la      sp, _estack
 	mret    // Return to kmain
 
+.global flush_mmu
+flush_mmu:
+    sfence.vma
+    ret
+
+.global my_fence
 .global read_satp
 .text
 read_satp:

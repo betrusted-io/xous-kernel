@@ -26,14 +26,14 @@ pub fn sys_interrupt_claim(irq: usize, f: fn(usize)) -> Result<(), XousError> {
 ///                     or the size isn't a multiple of the page width.
 /// * **OutOfMemory**: A contiguous chunk of memory couldn't be found, or the system's
 ///                    memory size has been exceeded.
-#[allow(dead_code)]
-pub fn sys_memory_allocate(
-    phys: Option<MemoryAddress>,
-    virt: Option<MemoryAddress>,
-    size: MemorySize,
-) -> Result<MemoryAddress, XousError> {
-    crate::processtable::sys_memory_allocate(phys, virt, size)
-}
+// #[allow(dead_code)]
+// pub fn sys_memory_allocate(
+//     phys: Option<MemoryAddress>,
+//     virt: Option<MemoryAddress>,
+//     size: MemorySize,
+// ) -> Result<MemoryAddress, XousError> {
+//     crate::processtable::sys_memory_allocate(phys, virt, size)
+// }
 
 extern "Rust" {
     /// Allocates kernel structures for a new process, and returns the new PID.

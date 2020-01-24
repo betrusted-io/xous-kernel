@@ -158,6 +158,7 @@ impl MemoryManager {
                 self.claim_page(region & !0xfff, 1)?;
             }
         }
+        self.claim_page(0xe000_1000, 1)?;
 
         unsafe { mstatus::set_mie() };
 
@@ -199,7 +200,7 @@ impl MemoryManager {
     /// # Errors
     ///
     /// * OutOfMemory - Tried to allocate a new pagetable, but ran out of memory.
-    fn map_page(
+    fn map_page_inner(
         &mut self,
         root: &mut PageTable,
         phys: usize,
@@ -272,6 +273,9 @@ impl MemoryManager {
             root_page, &pt, pt
         );
 
+        // self.map_page_inner(pt, 0xe0001000, 0xe001000)?;
+        // println!("");
+
         let mut ranges = [
             mem_range!(&_sbss, &_ebss),
             mem_range!(&_sdata, &_edata),
@@ -280,11 +284,29 @@ impl MemoryManager {
         ];
         for range in &mut ranges {
             for region in range {
-                self.map_page(pt, region, region)?;
+                self.map_page_inner(pt, region, region)?;
                 println!("");
             }
         }
         Ok(())
+    }
+
+    pub fn map_page(&mut self, satp: usize, phys: usize, virt: usize) -> Result<MemoryAddress, XousError> {
+        let root_page = (satp & ((1 << 22) - 1)) << 12;
+        let pid = ((satp >> 22) & ((1<<9)-1)) as XousPid;
+        assert!(root_page >= RAM_START);
+        assert!(root_page < RAM_END);
+        assert!(pid != 0);
+        let pt = unsafe { &mut (*(root_page as *mut PageTable)) };
+
+        self.claim_page(phys, pid)?;
+        match self.map_page_inner(pt, phys, virt) {
+            Ok(_) => Ok(MemoryAddress::new(virt).expect("Virt address was not 0")),
+            Err(e) => {
+                self.release_page(phys, pid);
+                Err(e)
+            }
+        }
     }
 
     /// Mark a given address as being owned by the specified process ID
@@ -313,6 +335,36 @@ impl MemoryManager {
             RAM_START..=RAM_END => claim_page_inner(&mut mm.ram, addr - RAM_START, pid),
             IO_START..=IO_END => claim_page_inner(&mut mm.io, addr - IO_START, pid),
             LCD_START..=LCD_END => claim_page_inner(&mut mm.lcd, addr - LCD_START, pid),
+            _ => Err(XousError::BadAddress),
+        }
+    }
+
+    /// Mark a given address as being owned by the specified process ID
+    fn release_page(&mut self, addr: usize, pid: XousPid) -> Result<(), XousError> {
+        let mut mm = unsafe { &mut MM };
+
+        fn release_page_inner(tbl: &mut [u8], addr: usize, pid: XousPid) -> Result<(), XousError> {
+            let page = addr / PAGE_SIZE;
+            if page > tbl.len() {
+                return Err(XousError::BadAddress);
+            }
+            if tbl[page] != pid {
+                return Err(XousError::MemoryInUse);
+            }
+            tbl[page] = 0;
+            Ok(())
+        }
+
+        // Ensure the address lies on a page boundary
+        if addr & 0xfff != 0 {
+            return Err(XousError::BadAlignment);
+        }
+
+        match addr {
+            FLASH_START..=FLASH_END => release_page_inner(&mut mm.flash, addr - FLASH_START, pid),
+            RAM_START..=RAM_END => release_page_inner(&mut mm.ram, addr - RAM_START, pid),
+            IO_START..=IO_END => release_page_inner(&mut mm.io, addr - IO_START, pid),
+            LCD_START..=LCD_END => release_page_inner(&mut mm.lcd, addr - LCD_START, pid),
             _ => Err(XousError::BadAddress),
         }
     }

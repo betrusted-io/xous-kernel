@@ -1,6 +1,6 @@
+use crate::definitions::{XousError, MemoryAddress, MemorySize};
+// use crate::syscalls::sys_memory_allocate;
 use core::fmt::{Error, Write};
-use crate::MemoryManager;
-use crate::definitions::XousError;
 
 #[macro_export]
 macro_rules! print
@@ -33,13 +33,13 @@ pub const DEFAULT_UART: Uart = Uart {
 };
 
 impl Uart {
-    // pub fn new(base_addr: usize) -> Uart {
-    //     Uart {
-    //         base: base_addr as *mut usize,
-    //     }
-    // }
     pub fn init(&self) -> Result<(), XousError> {
-        // mm.claim_page(self.base as usize, 1)
+        // sys_memory_allocate(
+        //     Some(MemoryAddress::new(0xe0001800).unwrap()),
+        //     Some(MemoryAddress::new(0xe0001800).unwrap()),
+        //     MemorySize::new(4096).unwrap(),
+        // )
+        // .expect("Couldn't identity map");
         Ok(())
     }
 

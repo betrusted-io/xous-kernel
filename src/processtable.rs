@@ -2,6 +2,7 @@ use crate::definitions::{MemoryAddress, MemorySize, XousError, XousPid};
 use crate::mem::MemoryManager;
 use crate::{filled_array, print, println};
 use vexriscv::register::{mepc, mstatus, satp};
+use vexriscv::asm::sfence_vma;
 
 const MAX_PROCESS_COUNT: usize = 256;
 static mut CURRENT_SATP: usize = 0;
@@ -22,6 +23,7 @@ static mut PT: ProcessTableInner = ProcessTableInner {
 
 extern "Rust" {
     fn kmain(mm: MemoryManager, pt: ProcessTable) -> !;
+    fn flush_mmu(r1: usize, r2: usize);
 }
 
 impl core::fmt::Debug for Process {
@@ -58,6 +60,7 @@ impl ProcessTableInner {
         }
         satp::write(new_satp);
         mepc::write(pc);
+        unsafe { flush_mmu(0, 0) };
         Ok(())
     }
 
@@ -104,9 +107,16 @@ pub fn sys_memory_allocate(
     virt: Option<MemoryAddress>,
     size: MemorySize,
 ) -> Result<MemoryAddress, XousError> {
+    let mut mm = MemoryManager::new()?;
     match phys {
-        Some(addr) => {}
-        None => {}
+        Some(paddr) => match virt {
+            Some(vaddr) => return mm.map_page(unsafe { CURRENT_SATP }, paddr.get(), vaddr.get()),
+            None => {},
+        }
+        None => match virt {
+            Some(vaddr) => {},
+            None => {},
+        }
     }
 
     Ok(MemoryAddress::new(4096).unwrap())

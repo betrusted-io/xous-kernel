@@ -31,7 +31,7 @@ fn handle_panic(arg: &PanicInfo) -> ! {
 }
 
 extern "Rust" {
-    fn return_from_interrupt() -> !;
+    fn enable_mmu() -> !;
 }
 extern "C" {
     /// Debug function to read the current SATP.  Useful since Renode
@@ -56,15 +56,53 @@ fn mmu_init() -> ! {
         .expect("Couldn't create identity mapping for PID1");
 
     println!("MMU enabled, jumping to kmain");
-    pt.switch_to(process1, kmain as usize).expect("Couldn't switch to PID1");
+    pt.switch_to(process1, kmain as usize)
+        .expect("Couldn't switch to PID1");
     println!("SATP: {:08x}", unsafe { read_satp() });
 
     unsafe {
-        mstatus::set_spp(mstatus::SPP::Supervisor);
+        // When we do an "mret", return to supervisor mode.
         mstatus::set_mpp(mstatus::MPP::Supervisor);
-        println!("kmain: MSTATUS: {:?}", mstatus::read());
-        return_from_interrupt()
+
+        // Additionally, enable CPU interrupts
+        mstatus::set_mie();
+
+        println!("loader: MSTATUS: {:?}", mstatus::read());
+        enable_mmu()
     }
+}
+
+#[no_mangle]
+#[inline(never)]
+fn test_good_write() {
+    let good_ptr = 0x4001_6000 as *mut u32;
+    // print!("Good ptr write:");
+    unsafe { good_ptr.write_volatile(0x12345678) };
+    // print!("Ok\r\nGood ptr read: ");
+    let val = unsafe { good_ptr.read_volatile() };
+    // println!("{:08x}", val);
+}
+
+#[no_mangle]
+#[inline(never)]
+fn test_bad_write() {
+    let bad_ptr = 0x4001_f000 as *mut u32;
+    unsafe { bad_ptr.write_volatile(0x98765432) };
+    let val = unsafe { bad_ptr.read_volatile() };
+    // print!("Bad ptr write:");
+    // print!("Ok\r\nBad ptr read: ");
+    // println!("{:08x}", val);
+}
+
+#[no_mangle]
+#[inline(never)]
+fn test_uart_write() {
+    let io_ptr = 0xe000_1800 as *mut u32;
+    unsafe { io_ptr.add(0).write_volatile(65) };
+    // print!("UART ptr write: ");
+    // print!(" Ok\r\nUART ptr read: ");
+    let val = unsafe { io_ptr.add(0).read_volatile() };
+    println!("{:08x}", val);
 }
 
 /// This function runs with the MMU enabled, as part of PID 1
@@ -75,16 +113,14 @@ fn kmain() -> ! {
         mie::set_msoft();
         mie::set_mtimer();
         mie::set_mext();
-        mstatus::set_mpp(mstatus::MPP::Supervisor);
-        mstatus::set_spie();
-        mstatus::set_mie(); // Enable CPU interrupts
+        // mstatus::set_spie();
     }
 
-    println!("kmain: SATP: {:08x}", satp::read().bits());
-    println!("kmain: MSTATUS: {:?}", mstatus::read());
-
     let uart = debug::DEFAULT_UART;
-    uart.init();
+    // uart.init();
+
+    // println!("kmain: SATP: {:08x}", satp::read().bits());
+    // println!("kmain: MSTATUS: {:?}", mstatus::read());
 
     // sys_interrupt_claim(0, timer::irq).unwrap();
     // timer::time_init();
@@ -93,6 +129,10 @@ fn kmain() -> ! {
     uart.enable_rx();
 
     sys_interrupt_claim(2, debug::irq).expect("Couldn't claim interrupt 2");
+
+    test_good_write();
+    test_uart_write();
+    test_bad_write();
 
     println!("Entering main loop");
     // let mut last_time = timer::get_time();
@@ -112,9 +152,9 @@ pub fn trap_handler() {
     let irqs_pending = vmip::read();
 
     if mc.is_exception() {
-        println!("CPU Exception");
         let ex = exception::RiscvException::from_regs(mc.bits(), mepc::read(), mtval::read());
-        println!("{}", ex);
+        // print!("CPU Exception: ");
+        // println!("{}", ex);
         unsafe { vexriscv::asm::ebreak() };
         loop {}
     }
