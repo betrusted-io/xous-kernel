@@ -21,11 +21,6 @@ static mut PT: ProcessTableInner = ProcessTableInner {
     processes: filled_array![Process { satp: 0 }; 256],
 };
 
-extern "Rust" {
-    fn kmain(mm: MemoryManager, pt: ProcessTable) -> !;
-    fn flush_mmu(r1: usize, r2: usize);
-}
-
 impl core::fmt::Debug for Process {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
         write!(
@@ -60,7 +55,6 @@ impl ProcessTableInner {
         }
         satp::write(new_satp);
         mepc::write(pc);
-        unsafe { flush_mmu(0, 0) };
         Ok(())
     }
 

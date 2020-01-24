@@ -24,6 +24,10 @@ const RAM_PAGE_COUNT: usize = RAM_SIZE / PAGE_SIZE;
 const IO_PAGE_COUNT: usize = IO_SIZE;
 const LCD_PAGE_COUNT: usize = LCD_SIZE / PAGE_SIZE;
 
+extern "Rust" {
+    fn flush_mmu();
+}
+
 pub struct MemoryManagerInner {
     ram: [XousPid; RAM_PAGE_COUNT],
     flash: [XousPid; FLASH_PAGE_COUNT],
@@ -273,9 +277,6 @@ impl MemoryManager {
             root_page, &pt, pt
         );
 
-        // self.map_page_inner(pt, 0xe0001000, 0xe001000)?;
-        // println!("");
-
         let mut ranges = [
             mem_range!(&_sbss, &_ebss),
             mem_range!(&_sdata, &_edata),
@@ -288,6 +289,11 @@ impl MemoryManager {
                 println!("");
             }
         }
+
+        self.map_page_inner(pt, 0xe0001000, 0x0e00_1000)?;
+        println!("");
+        unsafe { flush_mmu() };
+
         Ok(())
     }
 
@@ -301,7 +307,10 @@ impl MemoryManager {
 
         self.claim_page(phys, pid)?;
         match self.map_page_inner(pt, phys, virt) {
-            Ok(_) => Ok(MemoryAddress::new(virt).expect("Virt address was not 0")),
+            Ok(_) => {
+                unsafe { flush_mmu() };
+                Ok(MemoryAddress::new(virt).expect("Virt address was not 0"))
+            },
             Err(e) => {
                 self.release_page(phys, pid);
                 Err(e)
