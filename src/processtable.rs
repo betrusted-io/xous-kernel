@@ -1,7 +1,7 @@
 use crate::definitions::{MemoryAddress, MemorySize, XousError, XousPid};
 use crate::mem::MemoryManager;
 use crate::{filled_array, print, println};
-use vexriscv::register::{mepc, mstatus, satp};
+use vexriscv::register::{mepc, mstatus, satp, sepc, uepc};
 use vexriscv::asm::sfence_vma;
 
 const MAX_PROCESS_COUNT: usize = 256;
@@ -53,7 +53,7 @@ impl ProcessTableInner {
         unsafe {
             CURRENT_SATP = new_satp;
         }
-        satp::write(new_satp);
+        satp::write(new_satp & 0x803fffff);
         mepc::write(pc);
         Ok(())
     }

@@ -261,7 +261,7 @@ impl MemoryManager {
         if l0_pt[vpn0] & 1 != 0 {
             println!("Page already allocated!");
         }
-        l0_pt[vpn0] = (ppn1 << 20) | (ppn0 << 10) | 1 | 0xe | 0xc0;
+        l0_pt[vpn0] = (ppn1 << 20) | (ppn0 << 10) | 1 | 0xe | 0xd0;
         Ok(())
     }
 

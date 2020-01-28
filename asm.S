@@ -14,6 +14,8 @@
 .text
 enable_mmu:
     la      sp, _estack // Trash the stack and start over
+    # li		t0, (1 << 12) | (1 << 11) | (1 << 5)
+	# csrw	mstatus, t0
     fence.i
 return_from_interrupt:
 	mret    // Return to kmain
@@ -21,10 +23,4 @@ return_from_interrupt:
 .global flush_mmu
 flush_mmu:
     sfence.vma
-    ret
-
-.global read_satp
-.text
-read_satp:
-    csrr    a0, satp
     ret

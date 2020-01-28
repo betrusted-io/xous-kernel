@@ -108,7 +108,7 @@ pub fn irq(irq_number: usize) {
     sprintln!(
         "Interrupt {}: Key pressed: {}",
         irq_number,
-        SUPERVISOR_UART.getc().unwrap() as char
+        SUPERVISOR_UART.getc().expect("no character queued despite interrupt") as char
     );
 }
 

@@ -61,11 +61,12 @@ fn mmu_init() -> ! {
     println!("SATP: {:08x}", unsafe { read_satp() });
 
     unsafe {
-        // When we do an "mret", return to supervisor mode.
-        mstatus::set_mpp(mstatus::MPP::Supervisor);
 
         // Additionally, enable CPU interrupts
         mstatus::set_mie();
+
+        // When we do an "mret", return to supervisor mode.
+        mstatus::set_mpp(mstatus::MPP::User);
 
         println!("loader: MSTATUS: {:?}", mstatus::read());
         enable_mmu()
@@ -75,19 +76,20 @@ fn mmu_init() -> ! {
 /// This function runs with the MMU enabled, as part of PID 1
 #[no_mangle]
 fn kmain() -> ! {
-    unsafe {
-        vmim::write(0); // Disable all machine interrupts
-        mie::set_msoft();
-        mie::set_mtimer();
-        mie::set_mext();
-        // mstatus::set_spie();
-    }
+    // unsafe {
+    //     vmim::write(0); // Disable all machine interrupts
+    //     mie::set_msoft();
+    //     mie::set_mtimer();
+    //     mie::set_mext();
+    //     // mstatus::set_spie();
+    // }
 
+    sprintln!("KMAIN: In User mode");
     let uart = debug::SUPERVISOR_UART;
     // uart.init();
 
-    // println!("kmain: SATP: {:08x}", satp::read().bits());
-    // println!("kmain: MSTATUS: {:?}", mstatus::read());
+    sprintln!("kmain: SATP: {:08x}", satp::read().bits());
+    sprintln!("kmain: MSTATUS: {:?}", mstatus::read());
 
     // sys_interrupt_claim(0, timer::irq).unwrap();
     // timer::time_init();
@@ -98,6 +100,9 @@ fn kmain() -> ! {
     sys_interrupt_claim(2, debug::irq).expect("Couldn't claim interrupt 2");
 
     sprintln!("Entering main loop");
+    sprintln!("Attempting to disable the MMU ({:08x}):", satp::read().bits());
+    satp::write(0);
+    println!("Done!  Now: {:08x}", satp::read().bits());
     // let mut last_time = timer::get_time();
     loop {
         // let new_time = timer::get_time();
