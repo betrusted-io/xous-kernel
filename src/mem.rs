@@ -265,38 +265,6 @@ impl MemoryManager {
         Ok(())
     }
 
-    /// Create an identity mapping, copying the kernel to itself
-    pub fn create_identity(&mut self, satp: MemoryAddress) -> Result<(), XousError> {
-        let root_page = (satp.get() & ((1 << 22) - 1)) << 12;
-        assert!(root_page >= RAM_START);
-        assert!(root_page < RAM_END);
-
-        let pt = unsafe { &mut (*(root_page as *mut PageTable)) };
-        println!(
-            "Root page: {:08x}  pt: {:p}  pt: {:p}",
-            root_page, &pt, pt
-        );
-
-        let mut ranges = [
-            mem_range!(&_sbss, &_ebss),
-            mem_range!(&_sdata, &_edata),
-            mem_range!(&_sstack, &_estack),
-            mem_range!(&_stext, &_etext),
-        ];
-        for range in &mut ranges {
-            for region in range {
-                self.map_page_inner(pt, region, region)?;
-                println!("");
-            }
-        }
-
-        self.map_page_inner(pt, 0xe0001000, 0x0e00_1000)?;
-        println!("");
-        unsafe { flush_mmu() };
-
-        Ok(())
-    }
-
     pub fn map_page(&mut self, satp: usize, phys: usize, virt: usize) -> Result<MemoryAddress, XousError> {
         let root_page = (satp & ((1 << 22) - 1)) << 12;
         let pid = ((satp >> 22) & ((1<<9)-1)) as XousPid;

@@ -21,7 +21,12 @@ fn main() {
     }
 
     // Put the linker script somewhere the linker can find it
+    fs::File::create(out_dir.join("link.x"))
+        .unwrap()
+        .write_all(include_bytes!("link.x"))
+        .unwrap();
     println!("cargo:rustc-link-search={}", out_dir.display());
+    println!("cargo:rerun-if-changed=link.x");
 
     println!("cargo:rerun-if-changed=build.rs");
 }

@@ -56,7 +56,7 @@ pub const DEFAULT_UART: Uart = Uart {
 };
 
 pub const SUPERVISOR_UART: Uart = Uart {
-    base: 0x0E00_1800 as *mut usize,
+    base: 0xF000_2000 as *mut usize,
 };
 
 impl Uart {

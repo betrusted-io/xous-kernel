@@ -1,0 +1,57 @@
+extern "C" {
+    // Boundaries of the .bss section
+    static mut _ebss: u32;
+    static mut _sbss: u32;
+
+    // Boundaries of the .data section
+    static mut _edata: u32;
+    static mut _sdata: u32;
+
+    // Initial values of the .data section (stored in Flash)
+    static _sidata: u32;
+}
+
+/// Rust entry point (_start_rust)
+///
+/// Zeros bss section, initializes data section and calls main. This function
+/// never returns.
+#[link_section = ".init.rust"]
+#[export_name = "_start_rust"]
+pub unsafe extern "C" fn start_rust(a0: u32, a1: u32, a2: u32) -> ! {
+    extern "Rust" {
+        // This symbol will be provided by the kernel
+        fn xous_kernel_main(a0: u32, a1: u32, a2: u32) -> !;
+
+        // This symbol will be provided by the user via `#[pre_init]`
+        fn __pre_init();
+
+    }
+
+    r0::zero_bss(&mut _sbss, &mut _ebss);
+    r0::init_data(&mut _sdata, &mut _edata, &_sidata);
+
+    xous_kernel_main(a0, a1, a2);
+}
+
+
+/// Trap entry point rust (_start_trap_rust)
+///
+/// mcause is read to determine the cause of the trap. XLEN-1 bit indicates
+/// if it's an interrupt or an exception. The result is converted to an element
+/// of the Interrupt or Exception enum and passed to handle_interrupt or
+/// handle_exception.
+#[link_section = ".trap.rust"]
+#[export_name = "_start_trap_rust"]
+pub extern "C" fn start_trap_rust() {
+    extern "C" {
+        fn trap_handler();
+    }
+
+    unsafe {
+        // dispatch trap to handler
+        trap_handler();
+
+        // // mstatus, remain in M-mode after mret
+        // mstatus::set_mpp(mstatus::MPP::Machine);
+    }
+}
