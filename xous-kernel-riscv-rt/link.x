@@ -1,3 +1,16 @@
+MEMORY
+{
+  RAM : ORIGIN = 0x00c00000, LENGTH = 16M
+  FLASH : ORIGIN = 0x00800000, LENGTH = 16M
+}
+
+REGION_ALIAS("REGION_TEXT", FLASH);
+REGION_ALIAS("REGION_RODATA", FLASH);
+REGION_ALIAS("REGION_DATA", RAM);
+REGION_ALIAS("REGION_BSS", RAM);
+REGION_ALIAS("REGION_STACK", RAM);
+REGION_ALIAS("REGION_HEAP", RAM);
+
 PROVIDE(_stext = ORIGIN(REGION_TEXT));
 PROVIDE(_stack_start = ORIGIN(REGION_STACK) + LENGTH(REGION_STACK));
 PROVIDE(_max_hart_id = 0);
@@ -75,23 +88,6 @@ SECTIONS
     _ebss = .;
   } > REGION_BSS
 
-  /* fictitious region that represents the memory available for the stack */
-  .stack (NOLOAD) :
-  {
-    _sstack = .;
-    . += _stack_size;
-    . = ALIGN(4096);
-    _estack = .;
-  } > REGION_STACK
-
-  /* fictitious region that represents the memory available for the heap */
-  .heap (NOLOAD) :
-  {
-    . = ALIGN(4);
-    _sheap = .;
-    /* _eheap is defined elsewhere and is the remainder of RAM */
-  } > REGION_HEAP
-
   /* fake output .got section */
   /* Dynamic relocations are unsupported. This section is only used to detect
      relocatable code in the input files and raise an error if relocatable code
@@ -139,16 +135,9 @@ BUG(riscv-rt): the LMA of .data is not 4-byte aligned");
 ASSERT(_sbss % 4 == 0 && _ebss % 4 == 0, "
 BUG(riscv-rt): .bss is not 4-byte aligned");
 
-ASSERT(_sheap % 4 == 0, "
-BUG(riscv-rt): start of .heap is not 4-byte aligned");
-
 ASSERT(_stext + SIZEOF(.text) < ORIGIN(REGION_TEXT) + LENGTH(REGION_TEXT), "
 ERROR(riscv-rt): The .text section must be placed inside the REGION_TEXT region.
 Set _stext to an address smaller than 'ORIGIN(REGION_TEXT) + LENGTH(REGION_TEXT)'");
-
-ASSERT(SIZEOF(.stack) > (_max_hart_id + 1) * _hart_stack_size, "
-ERROR(riscv-rt): .stack section is too small for allocating stacks for all the harts.
-Consider changing `_max_hart_id` or `_hart_stack_size`.");
 
 ASSERT(SIZEOF(.got) == 0, "
 .got section detected in the input files. Dynamic relocations are not
@@ -158,3 +147,4 @@ then modify your build script to compile the C code _without_ the
 details.");
 
 /* Do not exceed this mark in the error messages above                                    | */
+
