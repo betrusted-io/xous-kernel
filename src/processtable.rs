@@ -4,22 +4,29 @@ use crate::{filled_array, print, println};
 use vexriscv::register::{mepc, mstatus, satp, sepc, uepc};
 use vexriscv::asm::sfence_vma;
 
-const MAX_PROCESS_COUNT: usize = 256;
+const MAX_PROCESS_COUNT: usize = 255;
 static mut CURRENT_SATP: usize = 0;
 
 pub struct Process {
+    /// The absolute MMU address.  If 0, then this process is free.
     pub satp: usize,
+
+    /// Currently unused
+    _reserved: u32,
+
+    /// Where this process is in terms of lifecycle
+    pub state: u32,
+
+    /// The last address of the program counter
+    pub pc: u32,
 }
 
-pub struct ProcessTableInner {
-    processes: [Process; MAX_PROCESS_COUNT],
+/// A big unifying struct containing all of the system state.
+/// This is inherited from the stage 1 bootloader.
+pub struct SystemServices {
+    /// A table of all processes on the system
+    pub processes: [Process; MAX_PROCESS_COUNT],
 }
-
-pub struct ProcessTable {}
-
-static mut PT: ProcessTableInner = ProcessTableInner {
-    processes: filled_array![Process { satp: 0 }; 256],
-};
 
 impl core::fmt::Debug for Process {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
@@ -34,7 +41,11 @@ impl core::fmt::Debug for Process {
     }
 }
 
-impl ProcessTableInner {
+impl SystemServices {
+    pub fn new(base: *mut u32) -> &'static SystemServices {
+        unsafe { &*(base as *mut SystemServices) }
+    }
+
     /// Switch to the new PID when we return to supervisor mode
     pub fn switch_to(&self, pid: XousPid, pc: usize) -> Result<(), XousError> {
         if pid == 0 {
@@ -68,50 +79,50 @@ impl ProcessTableInner {
     }
 }
 
-impl ProcessTable {
-    pub fn new() -> Result<ProcessTable, XousError> {
-        Ok(ProcessTable {})
-    }
+// impl ProcessTable {
+//     pub fn new() -> Result<ProcessTable, XousError> {
+//         Ok(ProcessTable {})
+//     }
 
-    pub fn create_process(&mut self, mm: &mut MemoryManager) -> Result<XousPid, XousError> {
-        let mut pt = unsafe { &mut PT };
-        let pid = pt.alloc_pid()?;
-        let root_page = mm.alloc_page(pid).expect("Couldn't allocate memory for new process page tables");
-        let root_page = root_page.get();
-        pt.processes[pid as usize].satp = (root_page >> 12) | ((pid as usize) << 22) | (1 << 31);
-        Ok(pid)
-    }
+//     pub fn create_process(&mut self, mm: &mut MemoryManager) -> Result<XousPid, XousError> {
+//         let mut pt = unsafe { &mut PT };
+//         let pid = pt.alloc_pid()?;
+//         let root_page = mm.alloc_page(pid).expect("Couldn't allocate memory for new process page tables");
+//         let root_page = root_page.get();
+//         pt.processes[pid as usize].satp = (root_page >> 12) | ((pid as usize) << 22) | (1 << 31);
+//         Ok(pid)
+//     }
 
-    pub fn satp_for(&self, pid: XousPid) -> Result<MemoryAddress, XousError> {
-        let pt = unsafe { &PT };
-        match MemoryAddress::new(pt.processes[pid as usize].satp) {
-            Some(addr) => Ok(addr),
-            None => Err(XousError::ProcessNotFound)
-        }
-    }
+//     pub fn satp_for(&self, pid: XousPid) -> Result<MemoryAddress, XousError> {
+//         let pt = unsafe { &PT };
+//         match MemoryAddress::new(pt.processes[pid as usize].satp) {
+//             Some(addr) => Ok(addr),
+//             None => Err(XousError::ProcessNotFound)
+//         }
+//     }
 
-    pub fn switch_to(&self, pid: XousPid, pc: usize) -> Result<(), XousError> {
-        let pt = unsafe { &PT };
-        pt.switch_to(pid, pc)
-    }
-}
+//     pub fn switch_to(&self, pid: XousPid, pc: usize) -> Result<(), XousError> {
+//         let pt = unsafe { &PT };
+//         pt.switch_to(pid, pc)
+//     }
+// }
 
 pub fn sys_memory_allocate(
     phys: Option<MemoryAddress>,
     virt: Option<MemoryAddress>,
     size: MemorySize,
 ) -> Result<MemoryAddress, XousError> {
-    let mut mm = MemoryManager::new()?;
-    match phys {
-        Some(paddr) => match virt {
-            Some(vaddr) => return mm.map_page(unsafe { CURRENT_SATP }, paddr.get(), vaddr.get()),
-            None => {},
-        }
-        None => match virt {
-            Some(vaddr) => {},
-            None => {},
-        }
-    }
+    // let mut mm = MemoryManager::new()?;
+    // match phys {
+    //     Some(paddr) => match virt {
+    //         Some(vaddr) => return mm.map_page(unsafe { CURRENT_SATP }, paddr.get(), vaddr.get()),
+    //         None => {},
+    //     }
+    //     None => match virt {
+    //         Some(vaddr) => {},
+    //         None => {},
+    //     }
+    // }
 
     Ok(MemoryAddress::new(4096).unwrap())
 }

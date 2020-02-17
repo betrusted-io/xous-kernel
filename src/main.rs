@@ -4,10 +4,14 @@
 extern crate vexriscv;
 
 #[macro_use]
+extern crate bitflags;
+
+#[macro_use]
 mod debug;
 
 mod start;
 
+#[macro_use]
 mod args;
 mod definitions;
 mod exception;
@@ -21,8 +25,8 @@ mod timer;
 pub use irq::sys_interrupt_claim;
 
 use core::panic::PanicInfo;
-use mem::MemoryManager;
-use processtable::ProcessTable;
+use mem::{MemoryManager, MMUFlags};
+use processtable::SystemServices;
 use vexriscv::register::{
     mepc, mie, satp, scause, sepc, sie, sstatus, stval, vmim, vmip, vsim, vsip,
 };
@@ -37,6 +41,13 @@ fn handle_panic(arg: &PanicInfo) -> ! {
 #[no_mangle]
 fn xous_kernel_main(arg_offset: *const u32, ss_offset: *mut u32, rpt_offset: *mut u32) -> ! {
     let args = args::KernelArguments::new(arg_offset);
+    let system_services = SystemServices::new(ss_offset);
+    let mut memory_manager = MemoryManager::new(rpt_offset, &args).expect("couldn't create memory manager");
+
+    // As a test, map the default UART into our memory space
+    memory_manager.map_page(0xE0001000, debug::DEFAULT_UART.base as u32, MMUFlags::R | MMUFlags::W).expect("unable to map serial port");
+    println!("Map success!");
+
     debug::SUPERVISOR_UART.enable_rx();
     sprintln!("KMAIN: Supervisor mode started...");
     unsafe {
@@ -47,11 +58,22 @@ fn xous_kernel_main(arg_offset: *const u32, ss_offset: *mut u32, rpt_offset: *mu
     }
     sprintln!("KMAIN: Interrupts enabled...");
     sprintln!("System Services offset: {:08x}", ss_offset as u32);
-    sprintln!("Runtime Pagetable Tracker offset: {:08x}", rpt_offset as u32);
-    sprintln!("Arg offset: {:08x}", arg_offset as u32);
+    sprintln!(
+        "Runtime Pagetable Tracker offset: {:08x}",
+        rpt_offset as u32
+    );
+    sprintln!("Kernel arguments:");
     for arg in args.iter() {
-        sprintln!("{}", arg);
+        sprintln!("    {}", arg);
     }
+
+    sprintln!("Processes:");
+    for (pid, process) in system_services.processes.iter().enumerate() {
+        if process.satp != 0 {
+            sprintln!("   {}: @ {:08x} PC:{:08x}", pid, process.satp, process.pc);
+        }
+    }
+
     sprint!("}} ");
     loop {}
     // let mut mm = MemoryManager::new().expect("Couldn't create memory manager");

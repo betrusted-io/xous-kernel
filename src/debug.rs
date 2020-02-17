@@ -48,7 +48,7 @@ macro_rules! sprintln
 }
 
 pub struct Uart {
-    base: *mut usize,
+    pub base: *mut usize,
 }
 
 pub const DEFAULT_UART: Uart = Uart {

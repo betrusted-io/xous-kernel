@@ -1,5 +1,15 @@
 use core::fmt;
 
+/// Convert a four-letter string into a 32-bit int.
+#[macro_export]
+macro_rules! make_type {
+    ($fcc:expr) => {{
+        let mut c: [u8; 4] = Default::default();
+        c.copy_from_slice($fcc.as_bytes());
+        u32::from_le_bytes(c)
+    }};
+}
+
 pub struct KernelArguments {
     pub base: *const u32,
 }
@@ -78,7 +88,7 @@ impl fmt::Display for KernelArgument {
             str::from_utf8_unchecked(slice)
         };
 
-        write!(f, "    {} ({:08x}, {} bytes):", s, self.name, self.size)?;
+        write!(f, "{} ({:08x}, {} bytes):", s, self.name, self.size)?;
         for word in self.data {
             write!(f, " {:08x}", word)?;
         }
