@@ -1,6 +1,6 @@
 use crate::definitions::XousError;
 use crate::filled_array;
-use vexriscv::register::{mstatus, vmim};
+use vexriscv::register::{sstatus, vsim};
 
 static mut IRQ_HANDLERS: [Option<fn(usize)>; 32] = filled_array![None; 32];
 
@@ -16,12 +16,14 @@ pub fn handle(irqs_pending: usize) {
             if irqs_pending & (1 << irq_no) != 0 {
                 if let Some(f) = IRQ_HANDLERS[irq_no] {
                     // Call the IRQ handler
+                    // sprintln!("Calling handler");
                     f(irq_no);
                 } else {
                     // If there is no handler, mask this interrupt
                     // to prevent an IRQ storm.  This is considered
                     // an error.
-                    vmim::write(vmim::read() | (1 << irq_no));
+                    // sprintln!("Shutting it up");
+                    vsim::write(vsim::read() | (1 << irq_no));
                 }
             }
         }
@@ -32,7 +34,7 @@ pub fn sys_interrupt_claim(irq: usize, f: fn(usize)) -> Result<(), XousError> {
     // Unsafe is required since we're accessing a static mut array.
     // However, we disable interrupts to prevent contention on this array.
     unsafe {
-        mstatus::clear_mie();
+        sstatus::clear_sie();
         let result = if irq > IRQ_HANDLERS.len() {
             Err(XousError::InterruptNotFound)
         } else if IRQ_HANDLERS[irq].is_some() {
@@ -41,10 +43,10 @@ pub fn sys_interrupt_claim(irq: usize, f: fn(usize)) -> Result<(), XousError> {
             IRQ_HANDLERS[irq] = Some(f);
             // Note that the vexriscv "IRQ Mask" register is inverse-logic --
             // that is, setting a bit in the "mask" register unmasks (i.e. enables) it.
-            vmim::write(vmim::read() | (1 << irq));
+            vsim::write(vsim::read() | (1 << irq));
             Ok(())
         };
-        mstatus::set_mie();
+        sstatus::set_sie();
         result
     }
 }

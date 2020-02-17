@@ -65,47 +65,6 @@ pub struct MemoryManager {
     ram_size: u32,
 }
 
-// impl core::fmt::Debug for MemoryManagerInner {
-//     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
-//         writeln!(fmt, "Ranges: ")?;
-//         writeln!(
-//             fmt,
-//             "    flash: {:08x} .. {:08x} ({} pages)",
-//             FLASH_START,
-//             FLASH_END,
-//             self.flash.len()
-//         )?;
-//         writeln!(
-//             fmt,
-//             "    ram:   {:08x} .. {:08x} ({} pages)",
-//             RAM_START,
-//             RAM_END,
-//             self.ram.len()
-//         )?;
-//         writeln!(
-//             fmt,
-//             "    io:    {:08x} .. {:08x} ({} pages)",
-//             IO_START,
-//             IO_END,
-//             self.io.len()
-//         )?;
-//         writeln!(
-//             fmt,
-//             "    lcd:   {:08x} .. {:08x} ({} pages)",
-//             LCD_START,
-//             LCD_END,
-//             self.lcd.len()
-//         )?;
-//         Ok(())
-//     }
-// }
-
-// impl core::fmt::Debug for MemoryManager {
-//     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
-//         unsafe { write!(fmt, "{:?}", MM) }
-//     }
-// }
-
 /// A single RISC-V page table entry.  In order to resolve an address,
 /// we need two entries: the top level, followed by the lower level.
 struct RootPageTable {
@@ -174,25 +133,6 @@ impl MemoryManager {
             mem_size += range.mem_size;
         }
 
-        // sprintln!("Memory Maps:");
-        // let l1_pt = unsafe { &mut (*(0x0020_0000 as *mut RootPageTable)) };
-        // for (i, l1_entry) in l1_pt.entries.iter().enumerate() {
-        //     if *l1_entry == 0 {
-        //         continue;
-        //     }
-        //     let superpage_addr = i as u32 * (1<<22);
-        //     sprintln!("    {:4} Superpage for {:08x} @ {:08x} (flags: {})", i,  superpage_addr, (*l1_entry>>10)<<12, l1_entry & 0xff);
-        //     // let l0_pt_addr = ((l1_entry >> 10) << 12) as *const u32;
-        //     let l0_pt = unsafe { &mut (*((0x0040_0000 + i*4096) as *mut LeafPageTable)) };
-        //     for (j, l0_entry) in l0_pt.entries.iter().enumerate() {
-        //         if *l0_entry == 0 {
-        //             continue;
-        //         }
-        //         let page_addr = j as u32 * (1<<12);
-        //         sprintln!("        {:4} {:08x} -> {:08x} (flags: {})", j, superpage_addr + page_addr, (*l0_entry>>10)<<12, l0_entry & 0xff);
-        //     }
-        // }
-
         let allocations =
             unsafe { slice::from_raw_parts_mut(base as *mut XousPid, mem_size as usize) };
         Ok(MemoryManager {
@@ -203,6 +143,26 @@ impl MemoryManager {
         })
     }
 
+    pub fn print(&self) {
+        sprintln!("Memory Maps:");
+        let l1_pt = unsafe { &mut (*(0x0020_0000 as *mut RootPageTable)) };
+        for (i, l1_entry) in l1_pt.entries.iter().enumerate() {
+            if *l1_entry == 0 {
+                continue;
+            }
+            let superpage_addr = i as u32 * (1<<22);
+            sprintln!("    {:4} Superpage for {:08x} @ {:08x} (flags: {})", i,  superpage_addr, (*l1_entry>>10)<<12, l1_entry & 0xff);
+            // let l0_pt_addr = ((l1_entry >> 10) << 12) as *const u32;
+            let l0_pt = unsafe { &mut (*((0x0040_0000 + i*4096) as *mut LeafPageTable)) };
+            for (j, l0_entry) in l0_pt.entries.iter().enumerate() {
+                if *l0_entry == 0 {
+                    continue;
+                }
+                let page_addr = j as u32 * (1<<12);
+                sprintln!("        {:4} {:08x} -> {:08x} (flags: {})", j, superpage_addr + page_addr, (*l0_entry>>10)<<12, l0_entry & 0xff);
+            }
+        }
+    }
     /// Allocate a single page to the given process.
     /// Ensures the page is zeroed out prior to handing it over to
     /// the specified process.

@@ -98,7 +98,7 @@ _start_trap:
     LOAD a7, 15*REGBYTES(sp)
 
     addi sp, sp, 16*REGBYTES
-    mret
+    sret
 
 .global flush_mmu
 flush_mmu:

@@ -17,20 +17,16 @@ extern "C" {
 /// never returns.
 #[link_section = ".init.rust"]
 #[export_name = "_start_rust"]
-pub unsafe extern "C" fn start_rust(a0: u32, a1: u32, a2: u32) -> ! {
+pub unsafe extern "C" fn start_rust(arg_offset: u32, ss_offset: u32, rpt_offset: u32) -> ! {
     extern "Rust" {
         // This symbol will be provided by the kernel
-        fn xous_kernel_main(a0: u32, a1: u32, a2: u32) -> !;
-
-        // This symbol will be provided by the user via `#[pre_init]`
-        fn __pre_init();
-
+        fn xous_kernel_main(arg_offset: u32, ss_offset: u32, rpt_offset: u32) -> !;
     }
 
     r0::zero_bss(&mut _sbss, &mut _ebss);
     r0::init_data(&mut _sdata, &mut _edata, &_sidata);
 
-    xous_kernel_main(a0, a1, a2);
+    xous_kernel_main(arg_offset, ss_offset, rpt_offset);
 }
 
 
