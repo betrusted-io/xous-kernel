@@ -45,7 +45,8 @@ fn xous_kernel_main(arg_offset: *const u32, ss_offset: *mut u32, rpt_offset: *mu
     let mut memory_manager = MemoryManager::new(rpt_offset, &args).expect("couldn't create memory manager");
 
     // As a test, map the default UART into our memory space
-    memory_manager.map_page(0xE0001000, debug::DEFAULT_UART.base as u32, MMUFlags::R | MMUFlags::W).expect("unable to map serial port");
+    memory_manager.map_page(0xF0001000, (debug::DEFAULT_UART.base as u32) & !4095, MMUFlags::R | MMUFlags::W).expect("unable to map serial port");
+    memory_manager.map_page(0xF0002000, (debug::SUPERVISOR_UART.base as u32) & !4095, MMUFlags::R | MMUFlags::W).expect("unable to map serial port");
     println!("Map success!");
 
     debug::SUPERVISOR_UART.enable_rx();
