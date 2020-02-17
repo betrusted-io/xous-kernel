@@ -108,8 +108,34 @@ pub struct MemoryManager {
 
 /// A single RISC-V page table entry.  In order to resolve an address,
 /// we need two entries: the top level, followed by the lower level.
-struct PageTable {
+struct RootPageTable {
     entries: [u32; 1024],
+}
+
+struct LeafPageTable {
+    entries: [u32; 1024],
+}
+
+impl fmt::Display for RootPageTable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, entry) in self.entries.iter().enumerate() {
+            if *entry != 0 {
+                writeln!(f, "    {:4} {:08x} -> {:08x} ({})", i, (entry>>10)<<12, i * (1<<22), entry & 0xff)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for LeafPageTable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, entry) in self.entries.iter().enumerate() {
+            if *entry != 0 {
+                writeln!(f, "    {:4} {:08x} -> {:08x} ({})", i, (entry>>10)<<12, i * (1<<10), entry & 0xff)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Initialize the memory map.
@@ -145,9 +171,27 @@ impl MemoryManager {
         }
 
         for range in extra.iter() {
-            sprintln!("{}", range);
             mem_size += range.mem_size;
         }
+
+        // sprintln!("Memory Maps:");
+        // let l1_pt = unsafe { &mut (*(0x0020_0000 as *mut RootPageTable)) };
+        // for (i, l1_entry) in l1_pt.entries.iter().enumerate() {
+        //     if *l1_entry == 0 {
+        //         continue;
+        //     }
+        //     let superpage_addr = i as u32 * (1<<22);
+        //     sprintln!("    {:4} Superpage for {:08x} @ {:08x} (flags: {})", i,  superpage_addr, (*l1_entry>>10)<<12, l1_entry & 0xff);
+        //     // let l0_pt_addr = ((l1_entry >> 10) << 12) as *const u32;
+        //     let l0_pt = unsafe { &mut (*((0x0040_0000 + i*4096) as *mut LeafPageTable)) };
+        //     for (j, l0_entry) in l0_pt.entries.iter().enumerate() {
+        //         if *l0_entry == 0 {
+        //             continue;
+        //         }
+        //         let page_addr = j as u32 * (1<<12);
+        //         sprintln!("        {:4} {:08x} -> {:08x} (flags: {})", j, superpage_addr + page_addr, (*l0_entry>>10)<<12, l0_entry & 0xff);
+        //     }
+        // }
 
         let allocations =
             unsafe { slice::from_raw_parts_mut(base as *mut XousPid, mem_size as usize) };
@@ -184,13 +228,11 @@ impl MemoryManager {
     /// * OutOfMemory - Tried to allocate a new pagetable, but ran out of memory.
     fn map_page_inner(
         &mut self,
-        root: &mut PageTable,
         pid: XousPid,
         phys: u32,
         virt: u32,
         flags: MMUFlags,
     ) -> Result<(), XousError> {
-        sprintln!("M {:08x} -> {:08x}", phys, virt);
         let ppn1 = (phys >> 22) & ((1 << 12) - 1);
         let ppn0 = (phys >> 12) & ((1 << 10) - 1);
         let ppo = (phys >> 0) & ((1 << 12) - 1);
@@ -206,23 +248,29 @@ impl MemoryManager {
         assert!(vpn0 < 1024);
         assert!(vpo < 4096);
 
-        let ref mut l1_pt = root.entries;
-        let l0pt_virt = 0x0020_0000 + 4 + ppn1 * mem::size_of::<usize>() as u32;
+        // The root (l1) pagetable is defined to be mapped into our virtual
+        // address space at this address.
+        let l1_pt = unsafe { &mut (*(0x0020_0000 as *mut RootPageTable)) };
+        let ref mut l1_pt = l1_pt.entries;
+
+        // Subsequent pagetables are defined as being mapped starting at
+        // offset 0x0020_0004, so 4 must be added to the ppn1 value.
+        let l0pt_virt = 0x0040_0000 + vpn1 * PAGE_SIZE as u32;
         let ref mut l0_pt =
-            unsafe { &mut (*(l0pt_virt as *mut PageTable)) }
-                .entries;
+            unsafe { &mut (*(l0pt_virt as *mut LeafPageTable)) };
 
         // Allocate a new level 1 pagetable entry if one doesn't exist.
         if l1_pt[vpn1 as usize] & MMUFlags::VALID.bits() == 0 {
+            // Allocate a fresh page
             let l0pt_phys = self.alloc_page(pid)?;
-            let l0pt_ppn1 = (l0pt_phys >> 22) & ((1 << 12) - 1);
-            let l0pt_ppn0 = (l0pt_phys >> 12) & ((1 << 10) - 1);
 
             // Mark this entry as a leaf node (WRX as 0), and indicate
             // it is a valid page by setting "V".
-            l1_pt[vpn1 as usize] = (l0pt_ppn1 << 10) | MMUFlags::VALID.bits();
+            l1_pt[vpn1 as usize] = ((l0pt_phys >> 12) << 10) | MMUFlags::VALID.bits();
+            unsafe { flush_mmu() };
+
+            // Map the new physical page to the virtual page, so we can access it.
             self.map_page_inner(
-                root,
                 pid,
                 l0pt_phys,
                 l0pt_virt,
@@ -242,9 +290,10 @@ impl MemoryManager {
         // if l0_pt[vpn0 as usize] & 1 != 0 {
         //     panic!("Page already allocated!");
         // }
-        l0_pt[vpn0 as usize] = (ppn1 << 20)
+        l0_pt.entries[vpn0 as usize] = (ppn1 << 20)
             | (ppn0 << 10)
             | (flags | MMUFlags::VALID | MMUFlags::D | MMUFlags::A).bits();
+        unsafe { flush_mmu() };
 
         Ok(())
     }
@@ -263,10 +312,9 @@ impl MemoryManager {
     ) -> Result<MemoryAddress, XousError> {
         let current_satp = satp::read().bits();
         let pid = ((current_satp >> 22) & ((1 << 9) - 1)) as XousPid;
-        let pt = unsafe { &mut (*(0x0020_0000 as *mut PageTable)) };
 
         self.claim_page(phys, pid)?;
-        match self.map_page_inner(pt, pid, phys, virt, flags) {
+        match self.map_page_inner(pid, phys, virt, flags) {
             Ok(_) => {
                 unsafe { flush_mmu() };
                 MemoryAddress::new(virt as usize).ok_or(XousError::BadAddress)
@@ -325,7 +373,7 @@ impl MemoryManager {
             }
             offset += self.ram_size / PAGE_SIZE as u32;
         }
-        sprintln!("mem: unable to claim or release");
+        // sprintln!("mem: unable to claim or release");
         Err(XousError::BadAddress)
     }
 
