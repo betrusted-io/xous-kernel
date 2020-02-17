@@ -1,7 +1,6 @@
 [target.riscv32i-unknown-none-elf]
 #runner = "riscv64-unknown-elf-gdb -x gdb_init"
 rustflags = [
-  "-C", "link-arg=-Tmemory.x",
   "-C", "link-arg=-Tlink.x",
   "-C", "linker-plugin-lto",
 ]
