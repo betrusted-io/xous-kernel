@@ -100,6 +100,32 @@ _start_trap:
     addi sp, sp, 16*REGBYTES
     sret
 
+.global return_to_user
+return_to_user:
+    csrw        satp, a0
+    csrw        sepc, a1
+    add         sp, a2, zero
+
+    LOAD ra, 0*REGBYTES(sp)
+    LOAD t0, 1*REGBYTES(sp)
+    LOAD t1, 2*REGBYTES(sp)
+    LOAD t2, 3*REGBYTES(sp)
+    LOAD t3, 4*REGBYTES(sp)
+    LOAD t4, 5*REGBYTES(sp)
+    LOAD t5, 6*REGBYTES(sp)
+    LOAD t6, 7*REGBYTES(sp)
+    LOAD a0, 8*REGBYTES(sp)
+    LOAD a1, 9*REGBYTES(sp)
+    LOAD a2, 10*REGBYTES(sp)
+    LOAD a3, 11*REGBYTES(sp)
+    LOAD a4, 12*REGBYTES(sp)
+    LOAD a5, 13*REGBYTES(sp)
+    LOAD a6, 14*REGBYTES(sp)
+    LOAD a7, 15*REGBYTES(sp)
+    addi sp, sp, 16*REGBYTES
+
+    sret
+
 .global flush_mmu
 flush_mmu:
     sfence.vma

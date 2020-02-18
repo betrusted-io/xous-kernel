@@ -28,7 +28,7 @@ use core::panic::PanicInfo;
 use mem::{MemoryManager, MMUFlags};
 use processtable::SystemServices;
 use vexriscv::register::{
-    satp, scause, sepc, sie, sstatus, stval, vsim, vsip,
+    scause, sepc, sie, sstatus, stval, vsip,
 };
 
 #[panic_handler]
@@ -45,9 +45,7 @@ fn xous_kernel_main(arg_offset: *const u32, ss_offset: *mut u32, rpt_offset: *mu
     let mut memory_manager = MemoryManager::new(rpt_offset, &args).expect("couldn't create memory manager");
 
     // As a test, map the default UART into our memory space
-    memory_manager.map_page(0xF0001000, (debug::DEFAULT_UART.base as u32) & !4095, MMUFlags::R | MMUFlags::W).expect("unable to map serial port");
     memory_manager.map_page(0xF0002000, (debug::SUPERVISOR_UART.base as u32) & !4095, MMUFlags::R | MMUFlags::W).expect("unable to map serial port");
-    println!("Map success!");
     memory_manager.print();
 
     debug::SUPERVISOR_UART.enable_rx();
@@ -71,12 +69,13 @@ fn xous_kernel_main(arg_offset: *const u32, ss_offset: *mut u32, rpt_offset: *mu
     sprintln!("Processes:");
     for (pid, process) in system_services.processes.iter().enumerate() {
         if process.satp != 0 {
-            sprintln!("   {}: @ {:08x} PC:{:08x}", (pid as u32)+1, process.satp, process.pc);
+            sprintln!("   {}: {:?}", (pid as u32)+1, process);
         }
     }
 
     sys_interrupt_claim(3, debug::irq).expect("Couldn't claim interrupt 3");
-
+    sprintln!("Switching to PID2 @ {:08x}", system_services.processes[1].pc);
+    system_services.switch_to_pid(2).expect("Couldn't switch to PID2");
     sprint!("}} ");
     loop {};
     //     unsafe { vexriscv::asm::wfi() };
