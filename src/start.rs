@@ -23,7 +23,7 @@ pub unsafe extern "C" fn start_rust(arg_offset: u32, ss_offset: u32, rpt_offset:
         fn xous_kernel_main(arg_offset: u32, ss_offset: u32, rpt_offset: u32) -> !;
     }
 
-    // r0::zero_bss(&mut _sbss, &mut _ebss);
+    r0::zero_bss(&mut _sbss, &mut _ebss);
     r0::init_data(&mut _sdata, &mut _edata, &_sidata);
 
     xous_kernel_main(arg_offset, ss_offset, rpt_offset);
