@@ -6,6 +6,16 @@ use core::slice;
 use core::str;
 use vexriscv::register::satp;
 
+const USER_STACK_OFFSET: u32 = 0xdfff_fffc;
+const PAGE_TABLE_OFFSET: u32 = 0x0040_0000;
+const PAGE_TABLE_ROOT_OFFSET: u32 = 0x0080_0000;
+const USER_AREA_START: u32 = 0x00c0_0000;
+
+// All of the kernel structures must live within Megapage 0,
+// and therefore are limited to 4 MB.
+const KERNEL_LOAD_OFFSET: u32 = 0x0020_0000;
+const KERNEL_ARGUMENT_OFFSET: u32 = 0x0010_0000;
+
 extern "C" {
     fn flush_mmu();
 }
@@ -145,7 +155,7 @@ impl MemoryManager {
 
     pub fn print(&self) {
         sprintln!("Memory Maps:");
-        let l1_pt = unsafe { &mut (*(0x0020_0000 as *mut RootPageTable)) };
+        let l1_pt = unsafe { &mut (*(PAGE_TABLE_ROOT_OFFSET as *mut RootPageTable)) };
         for (i, l1_entry) in l1_pt.entries.iter().enumerate() {
             if *l1_entry == 0 {
                 continue;
@@ -153,7 +163,7 @@ impl MemoryManager {
             let superpage_addr = i as u32 * (1<<22);
             sprintln!("    {:4} Superpage for {:08x} @ {:08x} (flags: {})", i,  superpage_addr, (*l1_entry>>10)<<12, l1_entry & 0xff);
             // let l0_pt_addr = ((l1_entry >> 10) << 12) as *const u32;
-            let l0_pt = unsafe { &mut (*((0x0040_0000 + i*4096) as *mut LeafPageTable)) };
+            let l0_pt = unsafe { &mut (*((PAGE_TABLE_OFFSET + i as u32 *4096) as *mut LeafPageTable)) };
             for (j, l0_entry) in l0_pt.entries.iter().enumerate() {
                 if *l0_entry == 0 {
                     continue;
@@ -210,12 +220,12 @@ impl MemoryManager {
 
         // The root (l1) pagetable is defined to be mapped into our virtual
         // address space at this address.
-        let l1_pt = unsafe { &mut (*(0x0020_0000 as *mut RootPageTable)) };
+        let l1_pt = unsafe { &mut (*(PAGE_TABLE_ROOT_OFFSET as *mut RootPageTable)) };
         let ref mut l1_pt = l1_pt.entries;
 
         // Subsequent pagetables are defined as being mapped starting at
         // offset 0x0020_0004, so 4 must be added to the ppn1 value.
-        let l0pt_virt = 0x0040_0000 + vpn1 * PAGE_SIZE as u32;
+        let l0pt_virt = PAGE_TABLE_OFFSET + vpn1 * PAGE_SIZE as u32;
         let ref mut l0_pt =
             unsafe { &mut (*(l0pt_virt as *mut LeafPageTable)) };
 
