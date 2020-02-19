@@ -24,30 +24,32 @@ pub struct Process {
 
 /// A big unifying struct containing all of the system state.
 /// This is inherited from the stage 1 bootloader.
+#[repr(C)]
 pub struct SystemServices {
     /// A table of all processes on the system
-    pub processes: [Process; MAX_PROCESS_COUNT],
+    pub processes: &'static mut [Process],
 }
 
 impl core::fmt::Debug for Process {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
         write!(
             fmt,
-            "Process (satp: 0x{:08x}, mode: {}, ASID: {}, PPN: {:08x}), PC: {:08x}, SP: {:08x}, state: {}",
+            "Process (satp: 0x{:08x}, mode: {}, ASID: {}, PPN: {:08x}), state: {}, PC: {:08x}, SP: {:08x}",
             self.satp,
             self.satp >> 31,
             self.satp >> 22 & ((1 << 9) - 1),
             (self.satp >> 0 & ((1 << 22) - 1)) << 9,
+            self.state,
             self.pc,
             self.sp,
-            self.state,
         )
     }
 }
 
+use core::slice;
 impl SystemServices {
-    pub fn new(base: *mut u32) -> &'static SystemServices {
-        unsafe { &*(base as *mut SystemServices) }
+    pub fn new(base: *mut u32) -> SystemServices {
+        SystemServices { processes: unsafe { slice::from_raw_parts_mut(base as *mut Process, MAX_PROCESS_COUNT) } }
     }
 
     pub fn switch_to_pid(&self, pid: XousPid) -> Result<(), XousError> {
@@ -64,8 +66,6 @@ impl SystemServices {
         let pc = self.processes[pid].pc as usize;
         let sp = self.processes[pid].sp as usize;
         let new_satp = (satp >> 12) | ((pid) << 22) | (1 << 31);
-        satp::write(new_satp);
-        sepc::write(pc);
         unsafe { return_to_user(new_satp, pc, sp) };
     }
     // /// Switch to the new PID when we return to supervisor mode

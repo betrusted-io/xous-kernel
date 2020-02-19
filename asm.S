@@ -103,6 +103,7 @@ _start_trap:
 .global return_to_user
 return_to_user:
     csrw        satp, a0
+    sfence.vma
     csrw        sepc, a1
     add         sp, a2, zero
 

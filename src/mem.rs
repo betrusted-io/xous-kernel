@@ -44,6 +44,7 @@ pub struct MemoryRangeExtra {
     mem_start: u32,
     mem_size: u32,
     mem_tag: u32,
+    padding: u32,
 }
 
 impl fmt::Display for MemoryRangeExtra {
