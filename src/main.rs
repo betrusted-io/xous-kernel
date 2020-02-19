@@ -25,11 +25,10 @@ mod timer;
 pub use irq::sys_interrupt_claim;
 
 use core::panic::PanicInfo;
-use mem::{MemoryManager, MMUFlags};
-use processtable::SystemServices;
-use vexriscv::register::{
-    scause, sepc, sie, sstatus, stval, vsip,
-};
+use core::slice;
+use mem::{MMUFlags, MemoryManager};
+use processtable::{InitialProcess, SystemServices};
+use vexriscv::register::{scause, sepc, sie, sstatus, stval, vsip};
 
 #[panic_handler]
 fn handle_panic(arg: &PanicInfo) -> ! {
@@ -39,14 +38,21 @@ fn handle_panic(arg: &PanicInfo) -> ! {
 }
 
 #[no_mangle]
-fn xous_kernel_main(arg_offset: *const u32, ss_offset: *mut u32, rpt_offset: *mut u32) -> ! {
+fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset: *mut u32) -> ! {
     let args = args::KernelArguments::new(arg_offset);
-    let system_services = SystemServices::new(ss_offset);
-    let mut memory_manager = MemoryManager::new(rpt_offset, &args).expect("couldn't create memory manager");
+    let mut memory_manager =
+        MemoryManager::new(rpt_offset, &args).expect("couldn't create memory manager");
+    memory_manager
+        .map_page(
+            0xF0002000,
+            (debug::SUPERVISOR_UART.base as u32) & !4095,
+            MMUFlags::R | MMUFlags::W,
+        )
+        .expect("unable to map serial port");
+    let system_services = SystemServices::new(init_offset, &args);
 
     // As a test, map the default UART into our memory space
-    memory_manager.map_page(0xF0002000, (debug::SUPERVISOR_UART.base as u32) & !4095, MMUFlags::R | MMUFlags::W).expect("unable to map serial port");
-    memory_manager.print();
+    // memory_manager.print();
 
     debug::SUPERVISOR_UART.enable_rx();
     sprintln!("KMAIN: Supervisor mode started...");
@@ -56,7 +62,6 @@ fn xous_kernel_main(arg_offset: *const u32, ss_offset: *mut u32, rpt_offset: *mu
         sie::set_sext();
     }
     sprintln!("KMAIN: Interrupts enabled...");
-    sprintln!("System Services offset: {:08x}", ss_offset as u32);
     sprintln!(
         "Runtime Pagetable Tracker offset: {:08x}",
         rpt_offset as u32
@@ -69,15 +74,20 @@ fn xous_kernel_main(arg_offset: *const u32, ss_offset: *mut u32, rpt_offset: *mu
     sprintln!("Processes:");
     for (pid, process) in system_services.processes.iter().enumerate() {
         if process.satp != 0 {
-            sprintln!("   {}: {:?}", (pid as u32)+1, process);
+            sprintln!("   {}: {:?}", (pid as u32) + 1, process);
         }
     }
 
     sys_interrupt_claim(3, debug::irq).expect("Couldn't claim interrupt 3");
-    sprintln!("Switching to PID2 @ {:08x}", system_services.processes[1].pc);
-    system_services.switch_to_pid(2).expect("Couldn't switch to PID2");
+    sprintln!(
+        "Switching to PID2 @ {:08x}",
+        system_services.processes[1].pc
+    );
+    system_services
+        .switch_to_pid(2)
+        .expect("Couldn't switch to PID2");
     sprint!("}} ");
-    loop {};
+    loop {}
     //     unsafe { vexriscv::asm::wfi() };
     // }
 }
@@ -105,7 +115,6 @@ fn xous_kernel_main(arg_offset: *const u32, ss_offset: *mut u32, rpt_offset: *mu
 
 //     // Enable "RX_EMPTY" interrupt
 //     uart.enable_rx();
-
 
 //     sprintln!("Entering main loop");
 //     sprintln!("Attempting to disable the MMU ({:08x}):", satp::read().bits());

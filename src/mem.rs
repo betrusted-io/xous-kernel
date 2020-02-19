@@ -90,7 +90,14 @@ impl fmt::Display for RootPageTable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, entry) in self.entries.iter().enumerate() {
             if *entry != 0 {
-                writeln!(f, "    {:4} {:08x} -> {:08x} ({})", i, (entry>>10)<<12, i * (1<<22), entry & 0xff)?;
+                writeln!(
+                    f,
+                    "    {:4} {:08x} -> {:08x} ({})",
+                    i,
+                    (entry >> 10) << 12,
+                    i * (1 << 22),
+                    entry & 0xff
+                )?;
             }
         }
         Ok(())
@@ -101,7 +108,14 @@ impl fmt::Display for LeafPageTable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, entry) in self.entries.iter().enumerate() {
             if *entry != 0 {
-                writeln!(f, "    {:4} {:08x} -> {:08x} ({})", i, (entry>>10)<<12, i * (1<<10), entry & 0xff)?;
+                writeln!(
+                    f,
+                    "    {:4} {:08x} -> {:08x} ({})",
+                    i,
+                    (entry >> 10) << 12,
+                    i * (1 << 10),
+                    entry & 0xff
+                )?;
             }
         }
         Ok(())
@@ -161,16 +175,29 @@ impl MemoryManager {
             if *l1_entry == 0 {
                 continue;
             }
-            let superpage_addr = i as u32 * (1<<22);
-            sprintln!("    {:4} Superpage for {:08x} @ {:08x} (flags: {})", i,  superpage_addr, (*l1_entry>>10)<<12, l1_entry & 0xff);
+            let superpage_addr = i as u32 * (1 << 22);
+            sprintln!(
+                "    {:4} Superpage for {:08x} @ {:08x} (flags: {})",
+                i,
+                superpage_addr,
+                (*l1_entry >> 10) << 12,
+                l1_entry & 0xff
+            );
             // let l0_pt_addr = ((l1_entry >> 10) << 12) as *const u32;
-            let l0_pt = unsafe { &mut (*((PAGE_TABLE_OFFSET + i as u32 *4096) as *mut LeafPageTable)) };
+            let l0_pt =
+                unsafe { &mut (*((PAGE_TABLE_OFFSET + i as u32 * 4096) as *mut LeafPageTable)) };
             for (j, l0_entry) in l0_pt.entries.iter().enumerate() {
                 if *l0_entry == 0 {
                     continue;
                 }
-                let page_addr = j as u32 * (1<<12);
-                sprintln!("        {:4} {:08x} -> {:08x} (flags: {})", j, superpage_addr + page_addr, (*l0_entry>>10)<<12, l0_entry & 0xff);
+                let page_addr = j as u32 * (1 << 12);
+                sprintln!(
+                    "        {:4} {:08x} -> {:08x} (flags: {})",
+                    j,
+                    superpage_addr + page_addr,
+                    (*l0_entry >> 10) << 12,
+                    l0_entry & 0xff
+                );
             }
         }
     }
@@ -227,8 +254,7 @@ impl MemoryManager {
         // Subsequent pagetables are defined as being mapped starting at
         // offset 0x0020_0004, so 4 must be added to the ppn1 value.
         let l0pt_virt = PAGE_TABLE_OFFSET + vpn1 * PAGE_SIZE as u32;
-        let ref mut l0_pt =
-            unsafe { &mut (*(l0pt_virt as *mut LeafPageTable)) };
+        let ref mut l0_pt = unsafe { &mut (*(l0pt_virt as *mut LeafPageTable)) };
 
         // Allocate a new level 1 pagetable entry if one doesn't exist.
         if l1_pt[vpn1 as usize] & MMUFlags::VALID.bits() == 0 {
@@ -241,12 +267,7 @@ impl MemoryManager {
             unsafe { flush_mmu() };
 
             // Map the new physical page to the virtual page, so we can access it.
-            self.map_page_inner(
-                pid,
-                l0pt_phys,
-                l0pt_virt,
-                MMUFlags::W | MMUFlags::R,
-            )?;
+            self.map_page_inner(pid, l0pt_phys, l0pt_virt, MMUFlags::W | MMUFlags::R)?;
 
             // Zero-out the new page
             let page_addr = l0pt_virt as *mut usize;

@@ -1,4 +1,6 @@
+use crate::args::KernelArguments;
 use crate::definitions::{XousError, XousPid};
+use core::slice;
 use vexriscv::register::{satp, sepc};
 
 const MAX_PROCESS_COUNT: usize = 255;
@@ -7,7 +9,7 @@ extern "C" {
     fn return_to_user(satp: usize, pc: usize, sp: usize) -> !;
 }
 
-#[repr(C)]
+#[derive(Default)]
 pub struct Process {
     /// The absolute MMU address.  If 0, then this process is free.
     pub satp: u32,
@@ -22,12 +24,28 @@ pub struct Process {
     pub sp: u32,
 }
 
+#[repr(C)]
+/// The stage1 bootloader sets up some initial processes.  These are reported
+/// to us as (satp, entrypoint, sp) tuples, which can be turned into a structure.
+/// The first element is always the kernel.
+pub struct InitialProcess {
+    /// The RISC-V SATP value, which includes the offset of the root page
+    /// table plus the process ID.
+    satp: u32,
+
+    /// Where execution begins
+    entrypoint: u32,
+
+    /// Address of the top of the stack
+    sp: u32,
+}
+
 /// A big unifying struct containing all of the system state.
 /// This is inherited from the stage 1 bootloader.
 #[repr(C)]
 pub struct SystemServices {
     /// A table of all processes on the system
-    pub processes: &'static mut [Process],
+    pub processes: [Process; MAX_PROCESS_COUNT],
 }
 
 impl core::fmt::Debug for Process {
@@ -38,7 +56,7 @@ impl core::fmt::Debug for Process {
             self.satp,
             self.satp >> 31,
             self.satp >> 22 & ((1 << 9) - 1),
-            (self.satp >> 0 & ((1 << 22) - 1)) << 9,
+            (self.satp >> 0 & ((1 << 22) - 1)) << 12,
             self.state,
             self.pc,
             self.sp,
@@ -46,10 +64,45 @@ impl core::fmt::Debug for Process {
     }
 }
 
-use core::slice;
 impl SystemServices {
-    pub fn new(base: *mut u32) -> SystemServices {
-        SystemServices { processes: unsafe { slice::from_raw_parts_mut(base as *mut Process, MAX_PROCESS_COUNT) } }
+    pub fn new(base: *const u32, args: &KernelArguments) -> SystemServices {
+        let init_offsets = {
+            let mut init_count = 1;
+            for arg in args.iter() {
+                if arg.name == make_type!("Init") {
+                    init_count += 1;
+                }
+            }
+            unsafe { slice::from_raw_parts(base as *const InitialProcess, init_count) }
+        };
+
+        use core::mem::MaybeUninit;
+
+        // Rust doesn't have a good way to initialize large arrays.
+        let mut array: [MaybeUninit<Process>; MAX_PROCESS_COUNT] =
+            unsafe { MaybeUninit::uninit().assume_init() };
+
+        for element in array.iter_mut() {
+            let new_process = Process {
+                ..Default::default()
+            };
+            *element = MaybeUninit::new(new_process);
+        }
+        let mut processes =
+            unsafe { core::mem::transmute::<_, [Process; MAX_PROCESS_COUNT]>(array) };
+        sprintln!("Iterating over {} processes...", init_offsets.len());
+        // Copy over the initial process list
+        for init in init_offsets.iter() {
+            let pid = ((init.satp >> 22) & ((1 << 9) - 1));
+            let ref mut process = processes[pid as usize];
+            sprintln!("Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}",
+            init.satp, pid, init.satp << 10, init.entrypoint, init.sp);
+            process.satp = init.satp;
+            process.pc = init.entrypoint;
+            process.sp = init.sp;
+        }
+
+        SystemServices { processes }
     }
 
     pub fn switch_to_pid(&self, pid: XousPid) -> Result<(), XousError> {
