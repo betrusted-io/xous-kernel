@@ -76,6 +76,13 @@ pub struct MemoryManager {
     ram_size: u32,
 }
 
+static mut MEMORY_MANAGER: MemoryManager = MemoryManager {
+    allocations: &mut [],
+    extra: &[],
+    ram_start: 0,
+    ram_size: 0,
+};
+
 /// A single RISC-V page table entry.  In order to resolve an address,
 /// we need two entries: the top level, followed by the lower level.
 struct RootPageTable {
@@ -128,7 +135,8 @@ impl fmt::Display for LeafPageTable {
 /// and place it at the usual offset.  The MMU will not be enabled yet,
 /// as the process entry has not yet been created.
 impl MemoryManager {
-    pub fn new(base: *mut u32, args: &KernelArguments) -> Result<MemoryManager, XousError> {
+    pub fn new(base: *mut u32, args: &KernelArguments) -> Result<&'static mut MemoryManager, XousError> {
+        let ref mut mm = unsafe { &mut MEMORY_MANAGER };
         let mut args_iter = args.iter();
         let xarg_def = args_iter.next().expect("mm: no kernel arguments found");
         assert!(
@@ -136,16 +144,15 @@ impl MemoryManager {
             "mm: first tag wasn't XArg"
         );
         assert!(xarg_def.data[1] == 1, "mm: xarg had unexpected version");
-        let ram_start = xarg_def.data[2];
-        let ram_size = xarg_def.data[3];
+        mm.ram_start = xarg_def.data[2];
+        mm.ram_size = xarg_def.data[3];
 
-        let mut mem_size = ram_size;
-        let mut extra = unsafe { slice::from_raw_parts_mut(0 as *mut MemoryRangeExtra, 0) };
+        let mut mem_size = mm.ram_size;
         for tag in args_iter {
             if tag.name == make_type!("MREx") {
-                assert!(extra.len() == 0, "mm: MREx tag appears twice!");
+                assert!(mm.extra.len() == 0, "mm: MREx tag appears twice!");
                 let ptr = tag.data.as_ptr() as *mut MemoryRangeExtra;
-                extra = unsafe {
+                mm.extra = unsafe {
                     slice::from_raw_parts_mut(
                         ptr,
                         tag.data.len() * 4 / mem::size_of::<MemoryRangeExtra>(),
@@ -154,18 +161,13 @@ impl MemoryManager {
             }
         }
 
-        for range in extra.iter() {
+        for range in mm.extra.iter() {
             mem_size += range.mem_size;
         }
 
-        let allocations =
+        mm.allocations =
             unsafe { slice::from_raw_parts_mut(base as *mut XousPid, mem_size as usize) };
-        Ok(MemoryManager {
-            allocations,
-            extra,
-            ram_start,
-            ram_size,
-        })
+        Ok(unsafe { &mut MEMORY_MANAGER })
     }
 
     pub fn print(&self) {

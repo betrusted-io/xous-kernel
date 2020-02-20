@@ -9,19 +9,22 @@ extern "C" {
     fn return_to_user(satp: usize, pc: usize, sp: usize) -> !;
 }
 
-#[derive(Default)]
+#[derive(Default, Copy, Clone)]
 pub struct Process {
     /// The absolute MMU address.  If 0, then this process is free.
     pub satp: u32,
-
-    /// Where this process is in terms of lifecycle
-    pub state: u32,
 
     /// The last address of the program counter
     pub pc: u32,
 
     /// Address of the stack pointer
     pub sp: u32,
+
+    /// CPU registers
+    pub regs: [u32; 29],
+
+    /// Where this process is in terms of lifecycle
+    pub state: u32,
 }
 
 #[repr(C)]
@@ -48,6 +51,10 @@ pub struct SystemServices {
     pub processes: [Process; MAX_PROCESS_COUNT],
 }
 
+static mut SYSTEM_SERVICES: SystemServices = SystemServices {
+    processes: [Process { satp: 0, state: 0, pc: 0, sp: 0, regs: [0; 29]}; MAX_PROCESS_COUNT],
+};
+
 impl core::fmt::Debug for Process {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
         write!(
@@ -65,7 +72,7 @@ impl core::fmt::Debug for Process {
 }
 
 impl SystemServices {
-    pub fn new(base: *const u32, args: &KernelArguments) -> SystemServices {
+    pub fn new(base: *const u32, args: &KernelArguments) -> &'static mut SystemServices {
         let init_offsets = {
             let mut init_count = 1;
             for arg in args.iter() {
@@ -76,33 +83,20 @@ impl SystemServices {
             unsafe { slice::from_raw_parts(base as *const InitialProcess, init_count) }
         };
 
-        use core::mem::MaybeUninit;
-
-        // Rust doesn't have a good way to initialize large arrays.
-        let mut array: [MaybeUninit<Process>; MAX_PROCESS_COUNT] =
-            unsafe { MaybeUninit::uninit().assume_init() };
-
-        for element in array.iter_mut() {
-            let new_process = Process {
-                ..Default::default()
-            };
-            *element = MaybeUninit::new(new_process);
-        }
-        let mut processes =
-            unsafe { core::mem::transmute::<_, [Process; MAX_PROCESS_COUNT]>(array) };
-        sprintln!("Iterating over {} processes...", init_offsets.len());
+        let ref mut ss = unsafe { &mut SYSTEM_SERVICES };
+        // sprintln!("Iterating over {} processes...", init_offsets.len());
         // Copy over the initial process list
         for init in init_offsets.iter() {
             let pid = (init.satp >> 22) & ((1 << 9) - 1);
-            let ref mut process = processes[(pid - 1) as usize];
-            sprintln!("Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}",
-            init.satp, pid, init.satp << 10, init.entrypoint, init.sp);
+            let ref mut process = ss.processes[(pid - 1) as usize];
+            // sprintln!("Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}",
+            // init.satp, pid, init.satp << 10, init.entrypoint, init.sp);
             process.satp = init.satp;
             process.pc = init.entrypoint;
             process.sp = init.sp;
         }
 
-        SystemServices { processes }
+        unsafe { &mut SYSTEM_SERVICES }
     }
 
     pub fn switch_to_pid(&self, pid: XousPid) -> Result<(), XousError> {

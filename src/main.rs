@@ -79,13 +79,13 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
     }
 
     sys_interrupt_claim(3, debug::irq).expect("Couldn't claim interrupt 3");
-    sprintln!(
-        "Switching to PID2 @ {:08x}",
-        system_services.processes[1].pc
-    );
-    system_services
-        .switch_to_pid(2)
-        .expect("Couldn't switch to PID2");
+    // sprintln!(
+    //     "Switching to PID2 @ {:08x}",
+    //     system_services.processes[1].pc
+    // );
+    // system_services
+    //     .switch_to_pid(2)
+    //     .expect("Couldn't switch to PID2");
     sprint!("}} ");
     loop {}
     //     unsafe { vexriscv::asm::wfi() };
