@@ -11,11 +11,6 @@ const PAGE_TABLE_OFFSET: u32 = 0x0040_0000;
 const PAGE_TABLE_ROOT_OFFSET: u32 = 0x0080_0000;
 const USER_AREA_START: u32 = 0x00c0_0000;
 
-// All of the kernel structures must live within Megapage 0,
-// and therefore are limited to 4 MB.
-const KERNEL_LOAD_OFFSET: u32 = 0x0020_0000;
-const KERNEL_ARGUMENT_OFFSET: u32 = 0x0010_0000;
-
 extern "C" {
     fn flush_mmu();
 }
@@ -40,11 +35,12 @@ enum ClaimOrRelease {
     Release,
 }
 
+#[repr(C)]
 pub struct MemoryRangeExtra {
     mem_start: u32,
     mem_size: u32,
     mem_tag: u32,
-    padding: u32,
+    _padding: u32,
 }
 
 impl fmt::Display for MemoryRangeExtra {

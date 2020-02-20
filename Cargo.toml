@@ -9,6 +9,7 @@ description = "Core kernel for Xous, including task switching and memory managem
 bitflags = "1.2.1"
 r0 = "0.2.2"
 vexriscv = "0.0.2"
+xous = { path = "xous-rs" }
 
 [profile.release]
 codegen-units = 1 # 1 better optimizations

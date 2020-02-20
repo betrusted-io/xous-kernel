@@ -54,12 +54,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "xous"
+version = "0.1.0"
+
+[[package]]
 name = "xous-kernel"
 version = "0.1.0"
 dependencies = [
  "bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "r0 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "vexriscv 0.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "xous 0.1.0",
 ]
 
 [metadata]

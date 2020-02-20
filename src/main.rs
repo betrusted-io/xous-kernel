@@ -6,6 +6,8 @@ extern crate vexriscv;
 #[macro_use]
 extern crate bitflags;
 
+extern crate xous;
+
 #[macro_use]
 mod debug;
 
@@ -24,11 +26,27 @@ mod timer;
 
 pub use irq::sys_interrupt_claim;
 
+use core::mem as core_mem;
 use core::panic::PanicInfo;
-use core::slice;
 use mem::{MMUFlags, MemoryManager};
-use processtable::{InitialProcess, SystemServices};
+use processtable::SystemServices;
 use vexriscv::register::{scause, sepc, sie, sstatus, stval, vsip};
+
+extern "Rust" {
+    fn fast_return_from_syscall_8(
+        a0: u32,
+        a1: u32,
+        a2: u32,
+        a3: u32,
+        a4: u32,
+        a5: u32,
+        a6: u32,
+        a7: u32,
+    ) -> !;
+}
+extern "Rust" {
+    fn xous_syscall_return(result: &xous::SyscallResult) -> !;
+}
 
 #[panic_handler]
 fn handle_panic(arg: &PanicInfo) -> ! {
@@ -40,7 +58,7 @@ fn handle_panic(arg: &PanicInfo) -> ! {
 #[no_mangle]
 fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset: *mut u32) -> ! {
     let args = args::KernelArguments::new(arg_offset);
-    let mut memory_manager =
+    let memory_manager =
         MemoryManager::new(rpt_offset, &args).expect("couldn't create memory manager");
     memory_manager
         .map_page(
@@ -78,6 +96,22 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
         }
     }
 
+    sprintln!(
+        "Calling syscall (args: {} bytes, ret: {} bytes)",
+        core_mem::size_of::<xous::SyscallArguments>(),
+        core_mem::size_of::<Result<xous::XousResult, xous::XousError>>()
+    );
+    let result = xous::syscall(xous::SyscallArguments {
+        nr: 0x9317,
+        a1: 1,
+        a2: 2,
+        a3: 3,
+        a4: 4,
+        a5: 5,
+        a6: 6,
+        a7: 7,
+    });
+    sprintln!("Returned from syscall.  Result: {:?}", result);
     sys_interrupt_claim(3, debug::irq).expect("Couldn't claim interrupt 3");
     // sprintln!(
     //     "Switching to PID2 @ {:08x}",
@@ -132,17 +166,35 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
 // }
 
 #[no_mangle]
-pub fn trap_handler() {
-    let mc = scause::read();
-    let irqs_pending = vsip::read();
+pub fn trap_handler(a0: u32, a1: u32, a2: u32, a3: u32, a4: u32, a5: u32, a6: u32, a7: u32) -> ! {
+    let sc = scause::read();
+    sprintln!("Entered trap handler");
+    if sc.bits() == 9 {
+        sprintln!(
+            "Syscall {:08x}: {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}",
+            a0,
+            a1,
+            a2,
+            a3,
+            a4,
+            a5,
+            a6,
+            a7
+        );
+        sepc::write(sepc::read() + 4);
+        // unsafe { xous_syscall_return(&xous::XousResult::MaxResult1(1, 2, 3, 4, 5, 6, 7)) };
+        unsafe { xous_syscall_return(&xous::XousResult::XousError(8675309)) };
+        // unsafe { fast_return_from_syscall_8(1, 2, 3, 4, 5, 6, 7, 8) };
+    }
 
-    let ex = exception::RiscvException::from_regs(mc.bits(), sepc::read(), stval::read());
-    if mc.is_exception() {
+    let ex = exception::RiscvException::from_regs(sc.bits(), sepc::read(), stval::read());
+    if sc.is_exception() {
         sprintln!("CPU Exception: {}", ex);
-        unsafe { vexriscv::asm::ebreak() };
         loop {}
     } else {
+        let irqs_pending = vsip::read();
         irq::handle(irqs_pending);
         // sprintln!("Other exception: {}  (irqs_pending: {:08x})", ex, irqs_pending);
     }
+    loop {}
 }

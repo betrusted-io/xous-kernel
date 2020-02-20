@@ -38,14 +38,14 @@ pub unsafe extern "C" fn start_rust(arg_offset: u32, ss_offset: u32, rpt_offset:
 /// handle_exception.
 #[link_section = ".trap.rust"]
 #[export_name = "_start_trap_rust"]
-pub extern "C" fn start_trap_rust() {
-    extern "C" {
-        fn trap_handler();
+pub extern "C" fn trap_handler(a0: u32, a1: u32, a2: u32, a3: u32, a4: u32, a5: u32, a6: u32, a7: u32) -> ! {
+    extern "Rust" {
+        fn trap_handler(a0: u32, a1: u32, a2: u32, a3: u32, a4: u32, a5: u32, a6: u32, a7: u32) -> !;
     }
 
     unsafe {
         // dispatch trap to handler
-        trap_handler();
+        trap_handler(a0, a1, a2, a3, a4, a5, a6, a7);
 
         // // mstatus, remain in M-mode after mret
         // mstatus::set_mpp(mstatus::MPP::Machine);

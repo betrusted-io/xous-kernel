@@ -59,53 +59,54 @@ _start:
 .global _start_trap
 
 _start_trap:
-    addi sp, sp, -16*REGBYTES
+    csrw        sscratch, sp
+    li          sp, 0x003ffffc - 31*REGBYTES
 
-    STORE ra, 0*REGBYTES(sp)
-    STORE t0, 1*REGBYTES(sp)
-    STORE t1, 2*REGBYTES(sp)
-    STORE t2, 3*REGBYTES(sp)
-    STORE t3, 4*REGBYTES(sp)
-    STORE t4, 5*REGBYTES(sp)
-    STORE t5, 6*REGBYTES(sp)
-    STORE t6, 7*REGBYTES(sp)
-    STORE a0, 8*REGBYTES(sp)
-    STORE a1, 9*REGBYTES(sp)
-    STORE a2, 10*REGBYTES(sp)
-    STORE a3, 11*REGBYTES(sp)
-    STORE a4, 12*REGBYTES(sp)
-    STORE a5, 13*REGBYTES(sp)
-    STORE a6, 14*REGBYTES(sp)
-    STORE a7, 15*REGBYTES(sp)
+    STORE       x1, 0*REGBYTES(sp)
+    // Skip SP for now
+    STORE       x3, 2*REGBYTES(sp)
+    STORE       x4, 3*REGBYTES(sp)
+    STORE       x5, 4*REGBYTES(sp)
+    STORE       x6, 5*REGBYTES(sp)
+    STORE       x7, 6*REGBYTES(sp)
+    STORE       x8, 7*REGBYTES(sp)
+    STORE       x9, 8*REGBYTES(sp)
+    STORE       x10, 9*REGBYTES(sp)
+    STORE       x11, 10*REGBYTES(sp)
+    STORE       x12, 11*REGBYTES(sp)
+    STORE       x13, 12*REGBYTES(sp)
+    STORE       x14, 13*REGBYTES(sp)
+    STORE       x15, 14*REGBYTES(sp)
+    STORE       x16, 15*REGBYTES(sp)
+    STORE       x17, 16*REGBYTES(sp)
+    STORE       x18, 17*REGBYTES(sp)
+    STORE       x19, 18*REGBYTES(sp)
+    STORE       x20, 19*REGBYTES(sp)
+    STORE       x21, 20*REGBYTES(sp)
+    STORE       x22, 21*REGBYTES(sp)
+    STORE       x23, 22*REGBYTES(sp)
+    STORE       x24, 23*REGBYTES(sp)
+    STORE       x25, 24*REGBYTES(sp)
+    STORE       x26, 25*REGBYTES(sp)
+    STORE       x27, 26*REGBYTES(sp)
+    STORE       x28, 27*REGBYTES(sp)
+    STORE       x29, 28*REGBYTES(sp)
+    STORE       x30, 29*REGBYTES(sp)
+    STORE       x31, 30*REGBYTES(sp)
 
-    jal ra, _start_trap_rust
+    // Save SP
+    csrr        t0, sscratch
+    STORE       t0, 1*REGBYTES(sp)
 
-    LOAD ra, 0*REGBYTES(sp)
-    LOAD t0, 1*REGBYTES(sp)
-    LOAD t1, 2*REGBYTES(sp)
-    LOAD t2, 3*REGBYTES(sp)
-    LOAD t3, 4*REGBYTES(sp)
-    LOAD t4, 5*REGBYTES(sp)
-    LOAD t5, 6*REGBYTES(sp)
-    LOAD t6, 7*REGBYTES(sp)
-    LOAD a0, 8*REGBYTES(sp)
-    LOAD a1, 9*REGBYTES(sp)
-    LOAD a2, 10*REGBYTES(sp)
-    LOAD a3, 11*REGBYTES(sp)
-    LOAD a4, 12*REGBYTES(sp)
-    LOAD a5, 13*REGBYTES(sp)
-    LOAD a6, 14*REGBYTES(sp)
-    LOAD a7, 15*REGBYTES(sp)
-
-    addi sp, sp, 16*REGBYTES
-    sret
+    j           _start_trap_rust
 
 .global return_to_user
 return_to_user:
+    li          sp, 0x003ffffc - 31*REGBYTES
     csrw        satp, a0
     sfence.vma
     csrw        sepc, a1
-    add         sp, a2, zero
+    move        sp, a2
 
     LOAD ra, 0*REGBYTES(sp)
     LOAD t0, 1*REGBYTES(sp)
@@ -126,6 +127,96 @@ return_to_user:
     addi sp, sp, 16*REGBYTES
 
     sret
+
+.global fast_return_from_syscall_8
+fast_return_from_syscall_8:
+    li          sp, 0x003ffffc - 31*REGBYTES
+    LOAD        t0, 1*REGBYTES(sp)
+    csrw        sscratch, t0
+
+    LOAD        x1, 0*REGBYTES(sp)
+    // Skip SP for now
+    LOAD        x3, 2*REGBYTES(sp)
+    LOAD        x4, 3*REGBYTES(sp)
+    LOAD        x5, 4*REGBYTES(sp)
+    LOAD        x6, 5*REGBYTES(sp)
+    LOAD        x7, 6*REGBYTES(sp)
+    LOAD        x8, 7*REGBYTES(sp)
+    LOAD        x9, 8*REGBYTES(sp)
+    // LOAD        x10, 9*REGBYTES(sp)
+    // LOAD        x11, 10*REGBYTES(sp)
+    // LOAD        x12, 11*REGBYTES(sp)
+    // LOAD        x13, 12*REGBYTES(sp)
+    // LOAD        x14, 13*REGBYTES(sp)
+    // LOAD        x15, 14*REGBYTES(sp)
+    // LOAD        x16, 15*REGBYTES(sp)
+    // LOAD        x17, 16*REGBYTES(sp)
+    LOAD        x18, 17*REGBYTES(sp)
+    LOAD        x19, 18*REGBYTES(sp)
+    LOAD        x20, 19*REGBYTES(sp)
+    LOAD        x21, 20*REGBYTES(sp)
+    LOAD        x22, 21*REGBYTES(sp)
+    LOAD        x23, 22*REGBYTES(sp)
+    LOAD        x24, 23*REGBYTES(sp)
+    LOAD        x25, 24*REGBYTES(sp)
+    LOAD        x26, 25*REGBYTES(sp)
+    LOAD        x27, 26*REGBYTES(sp)
+    LOAD        x28, 27*REGBYTES(sp)
+    LOAD        x29, 28*REGBYTES(sp)
+    LOAD        x30, 29*REGBYTES(sp)
+    LOAD        x31, 30*REGBYTES(sp)
+
+    // Save SP
+    csrr        t0, sscratch
+    LOAD        x2, 1*REGBYTES(sp)
+    sret
+
+.global xous_syscall_return
+xous_syscall_return:
+
+    LOAD        a7, 7*REGBYTES(a0)
+    LOAD        a6, 6*REGBYTES(a0)
+    LOAD        a5, 5*REGBYTES(a0)
+    LOAD        a4, 4*REGBYTES(a0)
+    LOAD        a3, 3*REGBYTES(a0)
+    LOAD        a2, 2*REGBYTES(a0)
+    LOAD        a1, 1*REGBYTES(a0)
+    LOAD        a0, 0*REGBYTES(a0)
+
+    li          sp, 0x003ffffc - 31*REGBYTES
+    LOAD        t0, 1*REGBYTES(sp)
+    csrw        sscratch, t0
+
+    LOAD        x1, 0*REGBYTES(sp)
+    // Skip SP for now
+    LOAD        x3, 2*REGBYTES(sp)
+    LOAD        x4, 3*REGBYTES(sp)
+    LOAD        x5, 4*REGBYTES(sp)
+    LOAD        x6, 5*REGBYTES(sp)
+    LOAD        x7, 6*REGBYTES(sp)
+    LOAD        x8, 7*REGBYTES(sp)
+    LOAD        x9, 8*REGBYTES(sp)
+
+    LOAD        x18, 17*REGBYTES(sp)
+    LOAD        x19, 18*REGBYTES(sp)
+    LOAD        x20, 19*REGBYTES(sp)
+    LOAD        x21, 20*REGBYTES(sp)
+    LOAD        x22, 21*REGBYTES(sp)
+    LOAD        x23, 22*REGBYTES(sp)
+    LOAD        x24, 23*REGBYTES(sp)
+    LOAD        x25, 24*REGBYTES(sp)
+    LOAD        x26, 25*REGBYTES(sp)
+    LOAD        x27, 26*REGBYTES(sp)
+    LOAD        x28, 27*REGBYTES(sp)
+    LOAD        x29, 28*REGBYTES(sp)
+    LOAD        x30, 29*REGBYTES(sp)
+    LOAD        x31, 30*REGBYTES(sp)
+
+    // Save SP
+    csrr        t0, sscratch
+    LOAD        x2, 1*REGBYTES(sp)
+    sret
+
 
 .global flush_mmu
 flush_mmu:
