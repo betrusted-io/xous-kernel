@@ -93,8 +93,8 @@ impl SystemServices {
         sprintln!("Iterating over {} processes...", init_offsets.len());
         // Copy over the initial process list
         for init in init_offsets.iter() {
-            let pid = ((init.satp >> 22) & ((1 << 9) - 1));
-            let ref mut process = processes[pid as usize];
+            let pid = (init.satp >> 22) & ((1 << 9) - 1);
+            let ref mut process = processes[(pid - 1) as usize];
             sprintln!("Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}",
             init.satp, pid, init.satp << 10, init.entrypoint, init.sp);
             process.satp = init.satp;
