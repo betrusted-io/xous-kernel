@@ -46,6 +46,7 @@ extern "Rust" {
 }
 extern "Rust" {
     fn xous_syscall_return(result: &xous::XousResult) -> !;
+    fn xous_syscall_return_fast(result: xous::XousResult) -> !;
 }
 
 #[panic_handler]
@@ -182,8 +183,9 @@ pub fn trap_handler(a0: u32, a1: u32, a2: u32, a3: u32, a4: u32, a5: u32, a6: u3
             a7
         );
         sepc::write(sepc::read() + 4);
-        // unsafe { xous_syscall_return(&xous::XousResult::MaxResult5(1, 2, 3, 4, 5, 6, 7)) };
-        unsafe { xous_syscall_return(&xous::XousResult::XousError(8675309)) };
+        unsafe { xous_syscall_return(&xous::XousResult::MaxResult5(1, 2, 3, 4, 5, 6, 7)) };
+        // unsafe { xous_syscall_return(&xous::XousResult::XousError(8675309)) };
+        // unsafe { xous_syscall_return_fast(xous::XousResult::MaxResult5(1, 2, 3, 4, 5, 6, 7)) };
         // unsafe { fast_return_from_syscall_8(1, 2, 3, 4, 5, 6, 7, 8) };
     }
 
