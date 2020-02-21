@@ -102,37 +102,9 @@ _start_trap:
 
 .global return_to_user
 return_to_user:
-    li          sp, 0x003ffffc - 31*REGBYTES
-    csrw        satp, a0
     sfence.vma
-    csrw        sepc, a1
-    move        sp, a2
-
-    LOAD ra, 0*REGBYTES(sp)
-    LOAD t0, 1*REGBYTES(sp)
-    LOAD t1, 2*REGBYTES(sp)
-    LOAD t2, 3*REGBYTES(sp)
-    LOAD t3, 4*REGBYTES(sp)
-    LOAD t4, 5*REGBYTES(sp)
-    LOAD t5, 6*REGBYTES(sp)
-    LOAD t6, 7*REGBYTES(sp)
-    LOAD a0, 8*REGBYTES(sp)
-    LOAD a1, 9*REGBYTES(sp)
-    LOAD a2, 10*REGBYTES(sp)
-    LOAD a3, 11*REGBYTES(sp)
-    LOAD a4, 12*REGBYTES(sp)
-    LOAD a5, 13*REGBYTES(sp)
-    LOAD a6, 14*REGBYTES(sp)
-    LOAD a7, 15*REGBYTES(sp)
-    addi sp, sp, 16*REGBYTES
-
-    sret
-
-.global fast_return_from_syscall_8
-fast_return_from_syscall_8:
-    li          sp, 0x003ffffc - 31*REGBYTES
-    LOAD        t0, 1*REGBYTES(sp)
-    csrw        sscratch, t0
+    move        sp, a1
+    csrw        sscratch, a0
 
     LOAD        x1, 0*REGBYTES(sp)
     // Skip SP for now
@@ -143,14 +115,14 @@ fast_return_from_syscall_8:
     LOAD        x7, 6*REGBYTES(sp)
     LOAD        x8, 7*REGBYTES(sp)
     LOAD        x9, 8*REGBYTES(sp)
-    // LOAD        x10, 9*REGBYTES(sp)
-    // LOAD        x11, 10*REGBYTES(sp)
-    // LOAD        x12, 11*REGBYTES(sp)
-    // LOAD        x13, 12*REGBYTES(sp)
-    // LOAD        x14, 13*REGBYTES(sp)
-    // LOAD        x15, 14*REGBYTES(sp)
-    // LOAD        x16, 15*REGBYTES(sp)
-    // LOAD        x17, 16*REGBYTES(sp)
+    LOAD        x10, 9*REGBYTES(sp)
+    LOAD        x11, 10*REGBYTES(sp)
+    LOAD        x12, 11*REGBYTES(sp)
+    LOAD        x13, 12*REGBYTES(sp)
+    LOAD        x14, 13*REGBYTES(sp)
+    LOAD        x15, 14*REGBYTES(sp)
+    LOAD        x16, 15*REGBYTES(sp)
+    LOAD        x17, 16*REGBYTES(sp)
     LOAD        x18, 17*REGBYTES(sp)
     LOAD        x19, 18*REGBYTES(sp)
     LOAD        x20, 19*REGBYTES(sp)
@@ -166,9 +138,8 @@ fast_return_from_syscall_8:
     LOAD        x30, 29*REGBYTES(sp)
     LOAD        x31, 30*REGBYTES(sp)
 
-    // Save SP
-    csrr        t0, sscratch
-    LOAD        x2, 1*REGBYTES(sp)
+    // Restore SP
+    csrr        sp, sscratch
     sret
 
 .global xous_syscall_return_rust

@@ -30,6 +30,8 @@ pub enum SysCall {
     ClaimInterrupt(usize /* IRQ number */, *mut usize /* function pointer */, *mut usize /* argument */),
     FreeInterrupt(usize /* IRQ number */),
     Invalid(usize, usize, usize, usize, usize, usize, usize),
+    SwitchTo(XousPid, *const usize /* pc */, *mut usize /* sp */),
+    Resume(XousPid),
 }
 
 #[derive(FromPrimitive)]
@@ -38,7 +40,9 @@ enum SysCallNumber {
     Yield = 3,
     Suspend = 4,
     ClaimInterrupt = 5,
-    FreeInterruptInterrupt = 6,
+    FreeInterrupt = 6,
+    SwitchTo = 7,
+    Resume = 8,
     Invalid,
 }
 
@@ -52,7 +56,9 @@ impl SysCall {
             SysCall::Yield => [SysCallNumber::Yield as usize, 0, 0, 0, 0, 0, 0, 0],
             SysCall::Suspend(a1, a2) => [SysCallNumber::Suspend as usize, a1 as usize, a2 as usize, 0, 0, 0, 0, 0],
             SysCall::ClaimInterrupt(a1, a2, a3) => [SysCallNumber::ClaimInterrupt as usize, a1, a2 as usize, a3 as usize, 0, 0, 0, 0],
-            SysCall::FreeInterrupt(a1) => [SysCallNumber::FreeInterruptInterrupt as usize, a1, 0, 0, 0, 0, 0, 0],
+            SysCall::FreeInterrupt(a1) => [SysCallNumber::FreeInterrupt as usize, a1, 0, 0, 0, 0, 0, 0],
+            SysCall::SwitchTo(a1, a2, a3) => [SysCallNumber::SwitchTo as usize, a1 as usize, a2 as usize, a3 as usize, 0, 0, 0, 0],
+            SysCall::Resume(a1) => [SysCallNumber::Resume as usize, a1 as usize, 0, 0, 0, 0, 0, 0],
             SysCall::Invalid(a1, a2, a3, a4, a5, a6, a7) => [SysCallNumber::Invalid as usize, a1, a2, a3, a4, a5, a6, a7],
         }
         // match *self {
@@ -67,11 +73,13 @@ impl SysCall {
     pub fn from_args(a0: usize, a1: usize, a2: usize, a3: usize, a4: usize, a5: usize, a6: usize, a7: usize) -> Result<Self, InvalidSyscall> {
         Ok(match FromPrimitive::from_usize(a0) {
             Some(SysCallNumber::MapMemory) => SysCall::MapMemory(a1 as *mut usize, a2 as *mut usize, a3, MemoryFlags::from_bits(a4).ok_or(InvalidSyscall {})?),
-            Some(Yield) => SysCall::Yield,
-            Some(Suspend) => SysCall::Suspend(a1 as XousPid, a2),
-            Some(ClaimInterrupt) => SysCall::ClaimInterrupt(a1, a2 as *mut usize, a3 as *mut usize),
-            Some(FreeInterrupt) => SysCall::FreeInterrupt(a1),
-            Some(Invalid) => return Err(InvalidSyscall {}),
+            Some(SysCallNumber::Yield) => SysCall::Yield,
+            Some(SysCallNumber::Suspend) => SysCall::Suspend(a1 as XousPid, a2),
+            Some(SysCallNumber::ClaimInterrupt) => SysCall::ClaimInterrupt(a1, a2 as *mut usize, a3 as *mut usize),
+            Some(SysCallNumber::FreeInterrupt) => SysCall::FreeInterrupt(a1),
+            Some(SysCallNumber::SwitchTo) => SysCall::SwitchTo(a1 as XousPid, a2 as *const usize, a3 as *mut usize),
+            Some(SysCallNumber::Resume) => SysCall::Resume(a1 as XousPid),
+            Some(SysCallNumber::Invalid) => return Err(InvalidSyscall {}),
             None => return Err(InvalidSyscall {}),
         })
     }

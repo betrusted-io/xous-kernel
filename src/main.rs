@@ -30,7 +30,7 @@ use core::mem as core_mem;
 use core::panic::PanicInfo;
 use mem::{MMUFlags, MemoryManager};
 use processtable::SystemServices;
-use vexriscv::register::{scause, sepc, sie, sstatus, stval, vsip};
+use vexriscv::register::{satp, scause, sepc, sie, sstatus, stval, vsip};
 
 extern "C" {
     fn xous_syscall_return_fast(
@@ -68,7 +68,8 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
         debug::SUPERVISOR_UART.base,
         4096,
         xous::MemoryFlags::R | xous::MemoryFlags::W,
-    )).unwrap();
+    ))
+    .unwrap();
     // memory_manager
     //     .map_page(
     //         0xF0002000 as *mut usize,
@@ -105,26 +106,13 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
         }
     }
 
-    // let result = xous::syscall(xous::SyscallArguments {
-    //     nr: 0x9317,
-    //     a1: 1,
-    //     a2: 2,
-    //     a3: 3,
-    //     a4: 4,
-    //     a5: 5,
-    //     a6: 6,
-    //     a7: 7,
-    // });
-    // sprintln!("Returned from syscall.  Result: {:?}", result);
     sprintln!("Calling Yield: {:?}", xous::rsyscall(xous::SysCall::Yield));
-    // sprintln!("Calling again: {:?}", xous::rsyscall(xous::SysCall::MaxResult1(9, 8, 7, 6, 5, 4, 3)));
-    // sprintln!("Calling again: {:?}", xous::rsyscall(xous::SysCall::MaxResult2(9, 8, 7, 6, 5, 4, 3)));
-    // sprintln!("Calling again: {:?}", xous::rsyscall(xous::SysCall::MapMemory(4 as *mut u32, 8 as *mut u32, 4)));
     sys_interrupt_claim(3, debug::irq).expect("Couldn't claim interrupt 3");
-    // sprintln!(
-    //     "Switching to PID2 @ {:08x}",
-    //     system_services.processes[1].pc
-    // );
+    sprintln!(
+        "Switching to PID2 @ {:08x}",
+        system_services.processes[1].pc
+    );
+    xous::rsyscall(xous::SysCall::Resume(2)).expect("Couldn't switch to PID2");
     // system_services
     //     .switch_to_pid(2)
     //     .expect("Couldn't switch to PID2");
@@ -206,18 +194,26 @@ pub fn trap_handler(
             unsafe { xous_syscall_return_fast(9, 3, 1, 7, 5, 3, 0, 9) };
         });
 
-        let response = match call {
+        let response = match &call {
             SysCall::MapMemory(phys, virt, size, flags) => unsafe {
                 let mm = MemoryManager::get();
-                mm.map_page(phys, virt, MMUFlags::R | MMUFlags::W)
+                mm.map_page(*phys, *virt, MMUFlags::R | MMUFlags::W)
                     .map(|x| XousResult::MemoryAddress(x.get() as *mut usize))
                     .unwrap_or(XousResult::XousError(2))
             },
-            c => {
-                sprintln!("Unhandled call: {:?}", c);
+            SysCall::SwitchTo(pid, pc, sp) => unsafe {
+                let ss = SystemServices::get();
+                ss.switch_to_pid_at(*pid, *pc, *sp);
                 XousResult::XousError(1)
-            }
+            },
+            SysCall::Resume(pid) => unsafe {
+                let ss = SystemServices::get();
+                ss.resume_pid(*pid);
+                XousResult::XousError(1)
+            },
+            c => XousResult::XousError(1),
         };
+        sprintln!("Call: {:?}  Result: {:?}", call, response);
         unsafe { xous_syscall_return_rust(&response) };
         // unsafe { xous_syscall_return_fast(9, 3, 1, 7, 5, 3, 0, 9) };
         // unsafe { xous_syscall_return_rust(&xous::XousResult::MaxResult6(a1+100, a2+100, a3+100, a4+100, a5+100, a6+100, a7+100)) };
@@ -228,7 +224,8 @@ pub fn trap_handler(
 
     let ex = exception::RiscvException::from_regs(sc.bits(), sepc::read(), stval::read());
     if sc.is_exception() {
-        sprintln!("CPU Exception: {}", ex);
+        let pid = satp::read().asid();
+        sprintln!("CPU Exception on PID {}: {}", pid, ex);
         loop {}
     } else {
         let irqs_pending = vsip::read();

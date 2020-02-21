@@ -6,7 +6,7 @@ use vexriscv::register::{satp, sepc};
 const MAX_PROCESS_COUNT: usize = 32;
 
 extern "C" {
-    fn return_to_user(satp: usize, pc: usize, sp: usize, regs: *const usize) -> !;
+    fn return_to_user(sp: usize, regs: *const usize) -> !;
 }
 
 #[derive(Default, Copy, Clone)]
@@ -99,7 +99,11 @@ impl SystemServices {
         unsafe { &mut SYSTEM_SERVICES }
     }
 
-    pub fn switch_to_pid(&self, pid: XousPid) -> Result<(), XousError> {
+    pub unsafe fn get() -> &'static mut SystemServices {
+        &mut SYSTEM_SERVICES
+    }
+
+    pub fn switch_to_pid_at(&self, pid: XousPid, pc: *const usize, sp: *mut usize) -> Result<(), XousError> {
         if pid == 0 {
             return Err(XousError::ProcessNotFound);
         }
@@ -108,89 +112,40 @@ impl SystemServices {
         if self.processes[pid].satp == 0 {
             return Err(XousError::ProcessNotFound);
         }
+        satp::write(self.processes[pid].satp);
+        sepc::write(pc as usize);
+        unsafe { return_to_user(sp as usize, self.processes[pid].regs.as_ptr()) };
+    }
 
-        let satp = self.processes[pid].satp;
+    pub fn resume_pid(&self, pid: XousPid) -> Result<(), XousError> {
+        if pid == 0 {
+            sprintln!("PID is 0");
+            return Err(XousError::ProcessNotFound);
+        }
+        // PID0 doesn't exist -- process IDs are offset by 1.
+        let pid = pid as usize - 1;
+        if self.processes[pid].satp == 0 {
+            sprintln!("Process is 0");
+            return Err(XousError::ProcessNotFound);
+        }
+        if (self.processes[pid].satp >> 22 & ((1 << 9) - 1)) != (pid+1) as usize {
+            sprintln!("Process doesn't match ({} vs {})",
+            self.processes[pid].satp >> 22 & ((1 << 9) - 1), (pid+1));
+            return Err(XousError::ProcessNotFound);
+        }
+
         let pc = self.processes[pid].pc;
         let sp = self.processes[pid].sp;
-        unsafe { return_to_user(satp, pc, sp, self.processes[pid].regs.as_ptr()) };
+        sprintln!("Changing SATP: {:08x}", self.processes[pid].satp);
+        satp::write(self.processes[pid].satp);
+        sprintln!("Setting SEPC");
+        sepc::write(pc);
+        sprintln!(">>>>>> PID {}, SP: {:08x}, PC: {:08x}", (pid+1), sp as usize, pc as usize);
+        // unsafe {
+        //     use crate::mem::MemoryManager;
+        //     let mm = MemoryManager::get();
+        //     mm.print();
+        // }
+        unsafe { return_to_user(sp, self.processes[pid].regs.as_ptr()) };
     }
-    // /// Switch to the new PID when we return to supervisor mode
-    // pub fn switch_to(&self, pid: XousPid, pc: usize) -> Result<(), XousError> {
-    //     if pid == 0 {
-    //         return Err(XousError::ProcessNotFound);
-    //     }
-    //     if pid >= 255 {
-    //         return Err(XousError::ProcessNotFound);
-    //     }
-
-    //     let pid = pid as usize;
-    //     let new_satp = self.processes[pid].satp;
-    //     if new_satp & (1 << 31) == 0 {
-    //         return Err(XousError::ProcessNotFound);
-    //     }
-
-    //     unsafe {
-    //         CURRENT_SATP = new_satp;
-    //     }
-    //     satp::write(new_satp & 0x803fffff);
-    //     mepc::write(pc);
-    //     Ok(())
-    // }
-
-    // pub fn alloc_pid(&mut self) -> Result<XousPid, XousError> {
-    //     for (idx, process) in self.processes.iter().enumerate() {
-    //         if process.satp == 0 {
-    //             return Ok((idx + 1) as XousPid);
-    //         }
-    //     }
-    //     Err(XousError::ProcessNotChild)
-    // }
 }
-
-// impl ProcessTable {
-//     pub fn new() -> Result<ProcessTable, XousError> {
-//         Ok(ProcessTable {})
-//     }
-
-//     pub fn create_process(&mut self, mm: &mut MemoryManager) -> Result<XousPid, XousError> {
-//         let mut pt = unsafe { &mut PT };
-//         let pid = pt.alloc_pid()?;
-//         let root_page = mm.alloc_page(pid).expect("Couldn't allocate memory for new process page tables");
-//         let root_page = root_page.get();
-//         pt.processes[pid as usize].satp = (root_page >> 12) | ((pid as usize) << 22) | (1 << 31);
-//         Ok(pid)
-//     }
-
-//     pub fn satp_for(&self, pid: XousPid) -> Result<MemoryAddress, XousError> {
-//         let pt = unsafe { &PT };
-//         match MemoryAddress::new(pt.processes[pid as usize].satp) {
-//             Some(addr) => Ok(addr),
-//             None => Err(XousError::ProcessNotFound)
-//         }
-//     }
-
-//     pub fn switch_to(&self, pid: XousPid, pc: usize) -> Result<(), XousError> {
-//         let pt = unsafe { &PT };
-//         pt.switch_to(pid, pc)
-//     }
-// }
-
-// pub fn sys_memory_allocate(
-//     phys: Option<MemoryAddress>,
-//     virt: Option<MemoryAddress>,
-//     size: MemorySize,
-// ) -> Result<MemoryAddress, XousError> {
-//     // let mut mm = MemoryManager::new()?;
-//     // match phys {
-//     //     Some(paddr) => match virt {
-//     //         Some(vaddr) => return mm.map_page(unsafe { CURRENT_SATP }, paddr.get(), vaddr.get()),
-//     //         None => {},
-//     //     }
-//     //     None => match virt {
-//     //         Some(vaddr) => {},
-//     //         None => {},
-//     //     }
-//     // }
-
-//     Ok(MemoryAddress::new(4096).unwrap())
-// }
