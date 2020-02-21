@@ -177,6 +177,7 @@ pub fn trap_handler(
     let sc = scause::read();
     // sprintln!("Entered trap handler");
     if (sc.bits() == 9) || (sc.bits() == 8) {
+        let is_user = sc.bits() == 8;
         sepc::write(sepc::read() + 4);
         // sprintln!(
         //     "Syscall {:08x}: {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}",
@@ -197,7 +198,7 @@ pub fn trap_handler(
         let response = match &call {
             SysCall::MapMemory(phys, virt, size, flags) => unsafe {
                 let mm = MemoryManager::get();
-                mm.map_page(*phys, *virt, MMUFlags::R | MMUFlags::W)
+                mm.map_page(*phys, *virt, MMUFlags::R | MMUFlags::W | (if is_user { MMUFlags::USER } else { MMUFlags::NONE }))
                     .map(|x| XousResult::MemoryAddress(x.get() as *mut usize))
                     .unwrap_or(XousResult::XousError(2))
             },
@@ -226,6 +227,10 @@ pub fn trap_handler(
     if sc.is_exception() {
         let pid = satp::read().asid();
         sprintln!("CPU Exception on PID {}: {}", pid, ex);
+        unsafe {
+            let mm = MemoryManager::get();
+            mm.print();
+        }
         loop {}
     } else {
         let irqs_pending = vsip::read();

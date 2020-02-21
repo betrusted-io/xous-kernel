@@ -1,12 +1,13 @@
 use crate::args::KernelArguments;
 use crate::definitions::{XousError, XousPid};
 use core::slice;
-use vexriscv::register::{satp, sepc};
+use vexriscv::register::{satp, sepc, sstatus};
 
 const MAX_PROCESS_COUNT: usize = 32;
 
 extern "C" {
     fn return_to_user(sp: usize, regs: *const usize) -> !;
+    fn flush_mmu();
 }
 
 #[derive(Default, Copy, Clone)]
@@ -138,14 +139,18 @@ impl SystemServices {
         let sp = self.processes[pid].sp;
         sprintln!("Changing SATP: {:08x}", self.processes[pid].satp);
         satp::write(self.processes[pid].satp);
+        // unsafe { flush_mmu() };
         sprintln!("Setting SEPC");
         sepc::write(pc);
+
+        // Return to user mode
+        unsafe { sstatus::set_spp(sstatus::SPP::User) };
         sprintln!(">>>>>> PID {}, SP: {:08x}, PC: {:08x}", (pid+1), sp as usize, pc as usize);
-        // unsafe {
-        //     use crate::mem::MemoryManager;
-        //     let mm = MemoryManager::get();
-        //     mm.print();
-        // }
+        unsafe {
+            use crate::mem::MemoryManager;
+            let mm = MemoryManager::get();
+            mm.print();
+        }
         unsafe { return_to_user(sp, self.processes[pid].regs.as_ptr()) };
     }
 }

@@ -17,6 +17,7 @@ extern "C" {
 
 bitflags! {
     pub struct MMUFlags: usize {
+        const NONE      = 0b00000000;
         const VALID     = 0b00000001;
         const R         = 0b00000010;
         const W         = 0b00000100;
@@ -132,7 +133,10 @@ impl fmt::Display for LeafPageTable {
 /// and place it at the usual offset.  The MMU will not be enabled yet,
 /// as the process entry has not yet been created.
 impl MemoryManager {
-    pub fn new(base: *mut u32, args: &KernelArguments) -> Result<&'static mut MemoryManager, XousError> {
+    pub fn new(
+        base: *mut u32,
+        args: &KernelArguments,
+    ) -> Result<&'static mut MemoryManager, XousError> {
         let ref mut mm = unsafe { &mut MEMORY_MANAGER };
         let mut args_iter = args.iter();
         let xarg_def = args_iter.next().expect("mm: no kernel arguments found");
@@ -180,26 +184,25 @@ impl MemoryManager {
             }
             let superpage_addr = i as u32 * (1 << 22);
             sprintln!(
-                "    {:4} Superpage for {:08x} @ {:08x} (flags: {})",
+                "    {:4} Superpage for {:08x} @ {:08x} (flags: {:?})",
                 i,
                 superpage_addr,
                 (*l1_entry >> 10) << 12,
-                l1_entry & 0xff
+                MMUFlags::from_bits(l1_entry & 0xff).unwrap()
             );
             // let l0_pt_addr = ((l1_entry >> 10) << 12) as *const u32;
-            let l0_pt =
-                unsafe { &mut (*((PAGE_TABLE_OFFSET + i * 4096) as *mut LeafPageTable)) };
+            let l0_pt = unsafe { &mut (*((PAGE_TABLE_OFFSET + i * 4096) as *mut LeafPageTable)) };
             for (j, l0_entry) in l0_pt.entries.iter().enumerate() {
                 if *l0_entry == 0 {
                     continue;
                 }
                 let page_addr = j as u32 * (1 << 12);
                 sprintln!(
-                    "        {:4} {:08x} -> {:08x} (flags: {})",
+                    "        {:4} {:08x} -> {:08x} (flags: {:?})",
                     j,
                     superpage_addr + page_addr,
                     (*l0_entry >> 10) << 12,
-                    l0_entry & 0xff
+                    MMUFlags::from_bits(l0_entry & 0xff).unwrap()
                 );
             }
         }
@@ -363,7 +366,9 @@ impl MemoryManager {
         // Go through additional regions looking for this address, and claim it
         // if it's not in use.
         for region in self.extra {
-            if addr > (region.mem_start as usize) && addr < (region.mem_start + region.mem_size) as usize {
+            if addr > (region.mem_start as usize)
+                && addr < (region.mem_start + region.mem_size) as usize
+            {
                 offset += (addr - (region.mem_start as usize)) / PAGE_SIZE;
                 return action_inner(&mut self.allocations[offset], pid, action);
             }
