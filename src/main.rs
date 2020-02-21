@@ -45,8 +45,11 @@ extern "Rust" {
     ) -> !;
 }
 extern "Rust" {
-    fn xous_syscall_return(result: &xous::XousResult) -> !;
-    fn xous_syscall_return_fast(result: xous::XousResult) -> !;
+    fn xous_syscall_return(a0: u32, a1: u32, a2: u32, a3: u32, a4: u32, a5: u32, a6: u32, a7: u32) -> !;
+    #[allow(unused)]
+    fn xous_syscall_return_rust(result: &xous::XousResult) -> !;
+    #[allow(unused)]
+    fn xous_syscall_return_rust_fast(result: xous::XousResult) -> !;
 }
 
 #[panic_handler]
@@ -102,17 +105,20 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
         core_mem::size_of::<xous::SyscallArguments>(),
         core_mem::size_of::<Result<xous::XousResult, xous::XousError>>()
     );
-    let result = xous::syscall(xous::SyscallArguments {
-        nr: 0x9317,
-        a1: 1,
-        a2: 2,
-        a3: 3,
-        a4: 4,
-        a5: 5,
-        a6: 6,
-        a7: 7,
-    });
-    sprintln!("Returned from syscall.  Result: {:?}", result);
+    // let result = xous::syscall(xous::SyscallArguments {
+    //     nr: 0x9317,
+    //     a1: 1,
+    //     a2: 2,
+    //     a3: 3,
+    //     a4: 4,
+    //     a5: 5,
+    //     a6: 6,
+    //     a7: 7,
+    // });
+    // sprintln!("Returned from syscall.  Result: {:?}", result);
+    sprintln!("Calling again: {:?}", xous::rsyscall(xous::SysCall::MaxResult1(9, 8, 7, 6, 5, 4, 3)));
+    sprintln!("Calling again: {:?}", xous::rsyscall(xous::SysCall::MaxResult2(9, 8, 7, 6, 5, 4, 3)));
+    sprintln!("Calling again: {:?}", xous::rsyscall(xous::SysCall::MapMemory(4 as *mut u32, 8 as *mut u32, 4)));
     sys_interrupt_claim(3, debug::irq).expect("Couldn't claim interrupt 3");
     // sprintln!(
     //     "Switching to PID2 @ {:08x}",
@@ -168,6 +174,8 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
 
 #[no_mangle]
 pub fn trap_handler(a0: u32, a1: u32, a2: u32, a3: u32, a4: u32, a5: u32, a6: u32, a7: u32) -> ! {
+    use core::mem;
+    use xous::SysCall;
     let sc = scause::read();
     sprintln!("Entered trap handler");
     if sc.bits() == 9 {
@@ -182,8 +190,10 @@ pub fn trap_handler(a0: u32, a1: u32, a2: u32, a3: u32, a4: u32, a5: u32, a6: u3
             a6,
             a7
         );
+        let call = unsafe { mem::transmute::<_, SysCall>((a0, a1, a2, a3, a4, a5, a6, a7)) };
+        sprintln!("   Syscall: {:?}", call);
         sepc::write(sepc::read() + 4);
-        unsafe { xous_syscall_return(&xous::XousResult::MaxResult5(1, 2, 3, 4, 5, 6, 7)) };
+        unsafe { xous_syscall_return_rust(&xous::XousResult::MaxResult6(a1+100, a2+100, a3+100, a4+100, a5+100, a6+100, a7+100)) };
         // unsafe { xous_syscall_return(&xous::XousResult::XousError(8675309)) };
         // unsafe { xous_syscall_return_fast(xous::XousResult::MaxResult5(1, 2, 3, 4, 5, 6, 7)) };
         // unsafe { fast_return_from_syscall_8(1, 2, 3, 4, 5, 6, 7, 8) };
