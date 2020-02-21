@@ -16,8 +16,8 @@ pub struct KernelArguments {
 
 pub struct KernelArgumentsIterator {
     base: *const u32,
-    size: u32,
-    offset: u32,
+    size: usize,
+    offset: usize,
 }
 
 impl KernelArguments {
@@ -33,27 +33,28 @@ impl KernelArguments {
         }
     }
 
-    pub fn size(&self) -> u32 {
-        unsafe { self.base.add(2).read() * 4 as u32 }
+    /// Get the size of the entire kernel argument structure
+    pub fn size(&self) -> usize {
+        unsafe { self.base.add(2).read() as usize * 4 }
     }
 }
 
 pub struct KernelArgument {
     pub name: u32,
-    pub size: u32,
+    pub size: usize,
     pub data: &'static [u32],
 }
 
 impl KernelArgument {
-    pub fn new(base: *const u32, offset: u32) -> Self {
-        let name = unsafe { base.add(offset as usize / 4).read() };
+    pub fn new(base: *const u32, offset: usize) -> Self {
+        let name = unsafe { base.add(offset / 4).read() } as u32;
         let size = unsafe {
-            (base.add(offset as usize / 4 + 1) as *const u16)
+            (base.add(offset / 4 + 1) as *const u16)
                 .add(1)
                 .read()
-        } as u32;
+        } as usize;
         let data = unsafe {
-            core::slice::from_raw_parts(base.add(offset as usize / 4 + 2), size as usize)
+            core::slice::from_raw_parts(base.add(offset / 4 + 2), size)
         };
         KernelArgument {
             name,

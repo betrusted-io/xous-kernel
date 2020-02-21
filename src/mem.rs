@@ -6,17 +6,17 @@ use core::slice;
 use core::str;
 use vexriscv::register::satp;
 
-const USER_STACK_OFFSET: u32 = 0xdfff_fffc;
-const PAGE_TABLE_OFFSET: u32 = 0x0040_0000;
-const PAGE_TABLE_ROOT_OFFSET: u32 = 0x0080_0000;
-const USER_AREA_START: u32 = 0x00c0_0000;
+const USER_STACK_OFFSET: usize = 0xdfff_fffc;
+const PAGE_TABLE_OFFSET: usize = 0x0040_0000;
+const PAGE_TABLE_ROOT_OFFSET: usize = 0x0080_0000;
+const USER_AREA_START: usize = 0x00c0_0000;
 
 extern "C" {
     fn flush_mmu();
 }
 
 bitflags! {
-    pub struct MMUFlags: u32 {
+    pub struct MMUFlags: usize {
         const VALID     = 0b00000001;
         const R         = 0b00000010;
         const W         = 0b00000100;
@@ -30,6 +30,7 @@ bitflags! {
 
 const PAGE_SIZE: usize = 4096;
 
+#[derive(Debug)]
 enum ClaimOrRelease {
     Claim,
     Release,
@@ -68,8 +69,8 @@ impl fmt::Display for MemoryRangeExtra {
 pub struct MemoryManager {
     allocations: &'static mut [XousPid],
     extra: &'static [MemoryRangeExtra],
-    ram_start: u32,
-    ram_size: u32,
+    ram_start: usize,
+    ram_size: usize,
 }
 
 static mut MEMORY_MANAGER: MemoryManager = MemoryManager {
@@ -82,11 +83,11 @@ static mut MEMORY_MANAGER: MemoryManager = MemoryManager {
 /// A single RISC-V page table entry.  In order to resolve an address,
 /// we need two entries: the top level, followed by the lower level.
 struct RootPageTable {
-    entries: [u32; 1024],
+    entries: [usize; 1024],
 }
 
 struct LeafPageTable {
-    entries: [u32; 1024],
+    entries: [usize; 1024],
 }
 
 impl fmt::Display for RootPageTable {
@@ -140,8 +141,8 @@ impl MemoryManager {
             "mm: first tag wasn't XArg"
         );
         assert!(xarg_def.data[1] == 1, "mm: xarg had unexpected version");
-        mm.ram_start = xarg_def.data[2];
-        mm.ram_size = xarg_def.data[3];
+        mm.ram_start = xarg_def.data[2] as usize;
+        mm.ram_size = xarg_def.data[3] as usize;
 
         let mut mem_size = mm.ram_size;
         for tag in args_iter {
@@ -158,12 +159,16 @@ impl MemoryManager {
         }
 
         for range in mm.extra.iter() {
-            mem_size += range.mem_size;
+            mem_size += range.mem_size as usize;
         }
 
         mm.allocations =
             unsafe { slice::from_raw_parts_mut(base as *mut XousPid, mem_size as usize) };
         Ok(unsafe { &mut MEMORY_MANAGER })
+    }
+
+    pub unsafe fn get() -> &'static mut MemoryManager {
+        &mut MEMORY_MANAGER
     }
 
     pub fn print(&self) {
@@ -183,7 +188,7 @@ impl MemoryManager {
             );
             // let l0_pt_addr = ((l1_entry >> 10) << 12) as *const u32;
             let l0_pt =
-                unsafe { &mut (*((PAGE_TABLE_OFFSET + i as u32 * 4096) as *mut LeafPageTable)) };
+                unsafe { &mut (*((PAGE_TABLE_OFFSET + i * 4096) as *mut LeafPageTable)) };
             for (j, l0_entry) in l0_pt.entries.iter().enumerate() {
                 if *l0_entry == 0 {
                     continue;
@@ -202,7 +207,7 @@ impl MemoryManager {
     /// Allocate a single page to the given process.
     /// Ensures the page is zeroed out prior to handing it over to
     /// the specified process.
-    pub fn alloc_page(&mut self, pid: XousPid) -> Result<u32, XousError> {
+    pub fn alloc_page(&mut self, pid: XousPid) -> Result<usize, XousError> {
         // Go through all RAM pages looking for a free page.
         // Optimization: start from the previous address.
         // sprintln!("Allocating page for PID {}", pid);
@@ -210,7 +215,7 @@ impl MemoryManager {
             // sprintln!("    Checking {:08x}...", index * PAGE_SIZE + self.ram_start as usize);
             if self.allocations[index] == 0 {
                 self.allocations[index] = pid + 1;
-                return Ok((index * PAGE_SIZE + self.ram_start as usize) as u32);
+                return Ok(index * PAGE_SIZE + self.ram_start);
             }
         }
         Err(XousError::OutOfMemory)
@@ -225,8 +230,8 @@ impl MemoryManager {
     fn map_page_inner(
         &mut self,
         pid: XousPid,
-        phys: u32,
-        virt: u32,
+        phys: usize,
+        virt: usize,
         flags: MMUFlags,
     ) -> Result<(), XousError> {
         let ppn1 = (phys >> 22) & ((1 << 12) - 1);
@@ -251,7 +256,7 @@ impl MemoryManager {
 
         // Subsequent pagetables are defined as being mapped starting at
         // offset 0x0020_0004, so 4 must be added to the ppn1 value.
-        let l0pt_virt = PAGE_TABLE_OFFSET + vpn1 * PAGE_SIZE as u32;
+        let l0pt_virt = PAGE_TABLE_OFFSET + vpn1 * PAGE_SIZE;
         let ref mut l0_pt = unsafe { &mut (*(l0pt_virt as *mut LeafPageTable)) };
 
         // Allocate a new level 1 pagetable entry if one doesn't exist.
@@ -296,15 +301,15 @@ impl MemoryManager {
     /// * MemoryInUse - The specified page is already mapped
     pub fn map_page(
         &mut self,
-        phys: u32,
-        virt: u32,
+        phys: *mut usize,
+        virt: *mut usize,
         flags: MMUFlags,
     ) -> Result<MemoryAddress, XousError> {
         let current_satp = satp::read().bits();
         let pid = ((current_satp >> 22) & ((1 << 9) - 1)) as XousPid;
 
         self.claim_page(phys, pid)?;
-        match self.map_page_inner(pid, phys, virt, flags) {
+        match self.map_page_inner(pid, phys as usize, virt as usize, flags) {
             Ok(_) => {
                 unsafe { flush_mmu() };
                 MemoryAddress::new(virt as usize).ok_or(XousError::BadAddress)
@@ -318,7 +323,7 @@ impl MemoryManager {
 
     fn claim_or_release(
         &mut self,
-        addr: u32,
+        addr: *mut usize,
         pid: XousPid,
         action: ClaimOrRelease,
     ) -> Result<(), XousError> {
@@ -340,6 +345,7 @@ impl MemoryManager {
             }
             Ok(())
         }
+        let addr = addr as usize;
 
         // Ensure the address lies on a page boundary
         if addr & 0xfff != 0 {
@@ -349,31 +355,31 @@ impl MemoryManager {
         let mut offset = 0;
         // Happy path: The address is in main RAM
         if addr > self.ram_start && addr < self.ram_start + self.ram_size {
-            offset += (addr - self.ram_start) / PAGE_SIZE as u32;
-            return action_inner(&mut self.allocations[offset as usize], pid, action);
+            offset += (addr - self.ram_start) / PAGE_SIZE;
+            return action_inner(&mut self.allocations[offset], pid, action);
         }
 
-        offset += self.ram_size / PAGE_SIZE as u32;
+        offset += self.ram_size / PAGE_SIZE;
         // Go through additional regions looking for this address, and claim it
         // if it's not in use.
         for region in self.extra {
-            if addr > region.mem_start && addr < region.mem_start + region.mem_size {
-                offset += (addr - region.mem_start) / PAGE_SIZE as u32;
-                return action_inner(&mut self.allocations[offset as usize], pid, action);
+            if addr > (region.mem_start as usize) && addr < (region.mem_start + region.mem_size) as usize {
+                offset += (addr - (region.mem_start as usize)) / PAGE_SIZE;
+                return action_inner(&mut self.allocations[offset], pid, action);
             }
-            offset += self.ram_size / PAGE_SIZE as u32;
+            offset += self.ram_size / PAGE_SIZE;
         }
         // sprintln!("mem: unable to claim or release");
         Err(XousError::BadAddress)
     }
 
     /// Mark a given address as being owned by the specified process ID
-    fn claim_page(&mut self, addr: u32, pid: XousPid) -> Result<(), XousError> {
+    fn claim_page(&mut self, addr: *mut usize, pid: XousPid) -> Result<(), XousError> {
         self.claim_or_release(addr, pid, ClaimOrRelease::Claim)
     }
 
     /// Mark a given address as no longer being owned by the specified process ID
-    fn release_page(&mut self, addr: u32, pid: XousPid) -> Result<(), XousError> {
+    fn release_page(&mut self, addr: *mut usize, pid: XousPid) -> Result<(), XousError> {
         self.claim_or_release(addr, pid, ClaimOrRelease::Release)
     }
 }

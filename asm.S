@@ -171,9 +171,7 @@ fast_return_from_syscall_8:
     LOAD        x2, 1*REGBYTES(sp)
     sret
 
-.global xous_syscall_return
 .global xous_syscall_return_rust
-xous_syscall_return:
 xous_syscall_return_rust:
 
     LOAD        a7, 7*REGBYTES(a0)

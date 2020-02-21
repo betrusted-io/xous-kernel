@@ -32,8 +32,8 @@ use mem::{MMUFlags, MemoryManager};
 use processtable::SystemServices;
 use vexriscv::register::{scause, sepc, sie, sstatus, stval, vsip};
 
-extern "Rust" {
-    fn fast_return_from_syscall_8(
+extern "C" {
+    fn xous_syscall_return_fast(
         a0: u32,
         a1: u32,
         a2: u32,
@@ -45,11 +45,10 @@ extern "Rust" {
     ) -> !;
 }
 extern "Rust" {
-    fn xous_syscall_return(a0: u32, a1: u32, a2: u32, a3: u32, a4: u32, a5: u32, a6: u32, a7: u32) -> !;
     #[allow(unused)]
     fn xous_syscall_return_rust(result: &xous::XousResult) -> !;
     #[allow(unused)]
-    fn xous_syscall_return_rust_fast(result: xous::XousResult) -> !;
+    fn xous_syscall_return(result: xous::XousResult) -> !;
 }
 
 #[panic_handler]
@@ -62,15 +61,21 @@ fn handle_panic(arg: &PanicInfo) -> ! {
 #[no_mangle]
 fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset: *mut u32) -> ! {
     let args = args::KernelArguments::new(arg_offset);
-    let memory_manager =
+    let _memory_manager =
         MemoryManager::new(rpt_offset, &args).expect("couldn't create memory manager");
-    memory_manager
-        .map_page(
-            0xF0002000,
-            (debug::SUPERVISOR_UART.base as u32) & !4095,
-            MMUFlags::R | MMUFlags::W,
-        )
-        .expect("unable to map serial port");
+    xous::rsyscall(xous::SysCall::MapMemory(
+        0xF0002000 as *mut usize,
+        debug::SUPERVISOR_UART.base,
+        4096,
+        xous::MemoryFlags::R | xous::MemoryFlags::W,
+    )).unwrap();
+    // memory_manager
+    //     .map_page(
+    //         0xF0002000 as *mut usize,
+    //         ((debug::SUPERVISOR_UART.base as u32) & !4095) as *mut usize,
+    //         MMUFlags::R | MMUFlags::W,
+    //     )
+    //     .expect("unable to map serial port");
     let system_services = SystemServices::new(init_offset, &args);
 
     // As a test, map the default UART into our memory space
@@ -100,11 +105,6 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
         }
     }
 
-    sprintln!(
-        "Calling syscall (args: {} bytes, ret: {} bytes)",
-        core_mem::size_of::<xous::SyscallArguments>(),
-        core_mem::size_of::<Result<xous::XousResult, xous::XousError>>()
-    );
     // let result = xous::syscall(xous::SyscallArguments {
     //     nr: 0x9317,
     //     a1: 1,
@@ -116,9 +116,10 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
     //     a7: 7,
     // });
     // sprintln!("Returned from syscall.  Result: {:?}", result);
-    sprintln!("Calling again: {:?}", xous::rsyscall(xous::SysCall::MaxResult1(9, 8, 7, 6, 5, 4, 3)));
-    sprintln!("Calling again: {:?}", xous::rsyscall(xous::SysCall::MaxResult2(9, 8, 7, 6, 5, 4, 3)));
-    sprintln!("Calling again: {:?}", xous::rsyscall(xous::SysCall::MapMemory(4 as *mut u32, 8 as *mut u32, 4)));
+    sprintln!("Calling Yield: {:?}", xous::rsyscall(xous::SysCall::Yield));
+    // sprintln!("Calling again: {:?}", xous::rsyscall(xous::SysCall::MaxResult1(9, 8, 7, 6, 5, 4, 3)));
+    // sprintln!("Calling again: {:?}", xous::rsyscall(xous::SysCall::MaxResult2(9, 8, 7, 6, 5, 4, 3)));
+    // sprintln!("Calling again: {:?}", xous::rsyscall(xous::SysCall::MapMemory(4 as *mut u32, 8 as *mut u32, 4)));
     sys_interrupt_claim(3, debug::irq).expect("Couldn't claim interrupt 3");
     // sprintln!(
     //     "Switching to PID2 @ {:08x}",
@@ -173,27 +174,53 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
 // }
 
 #[no_mangle]
-pub fn trap_handler(a0: u32, a1: u32, a2: u32, a3: u32, a4: u32, a5: u32, a6: u32, a7: u32) -> ! {
-    use core::mem;
-    use xous::SysCall;
+pub fn trap_handler(
+    a0: usize,
+    a1: usize,
+    a2: usize,
+    a3: usize,
+    a4: usize,
+    a5: usize,
+    a6: usize,
+    a7: usize,
+) -> ! {
+    use xous::{SysCall, XousResult};
+    let call = SysCall::from_args(a0, a1, a2, a3, a4, a5, a6, a7);
     let sc = scause::read();
-    sprintln!("Entered trap handler");
-    if sc.bits() == 9 {
-        sprintln!(
-            "Syscall {:08x}: {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}",
-            a0,
-            a1,
-            a2,
-            a3,
-            a4,
-            a5,
-            a6,
-            a7
-        );
-        let call = unsafe { mem::transmute::<_, SysCall>((a0, a1, a2, a3, a4, a5, a6, a7)) };
-        sprintln!("   Syscall: {:?}", call);
+    // sprintln!("Entered trap handler");
+    if (sc.bits() == 9) || (sc.bits() == 8) {
         sepc::write(sepc::read() + 4);
-        unsafe { xous_syscall_return_rust(&xous::XousResult::MaxResult6(a1+100, a2+100, a3+100, a4+100, a5+100, a6+100, a7+100)) };
+        // sprintln!(
+        //     "Syscall {:08x}: {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}",
+        //     a0,
+        //     a1,
+        //     a2,
+        //     a3,
+        //     a4,
+        //     a5,
+        //     a6,
+        //     a7
+        // );
+        // sprintln!("   Syscall: {:?}", call);
+        let call = call.unwrap_or_else(|_| {
+            unsafe { xous_syscall_return_fast(9, 3, 1, 7, 5, 3, 0, 9) };
+        });
+
+        let response = match call {
+            SysCall::MapMemory(phys, virt, size, flags) => unsafe {
+                let mm = MemoryManager::get();
+                mm.map_page(phys, virt, MMUFlags::R | MMUFlags::W)
+                    .map(|x| XousResult::MemoryAddress(x.get() as *mut usize))
+                    .unwrap_or(XousResult::XousError(2))
+            },
+            c => {
+                sprintln!("Unhandled call: {:?}", c);
+                XousResult::XousError(1)
+            }
+        };
+        unsafe { xous_syscall_return_rust(&response) };
+        // unsafe { xous_syscall_return_fast(9, 3, 1, 7, 5, 3, 0, 9) };
+        // unsafe { xous_syscall_return_rust(&xous::XousResult::MaxResult6(a1+100, a2+100, a3+100, a4+100, a5+100, a6+100, a7+100)) };
         // unsafe { xous_syscall_return(&xous::XousResult::XousError(8675309)) };
         // unsafe { xous_syscall_return_fast(xous::XousResult::MaxResult5(1, 2, 3, 4, 5, 6, 7)) };
         // unsafe { fast_return_from_syscall_8(1, 2, 3, 4, 5, 6, 7, 8) };

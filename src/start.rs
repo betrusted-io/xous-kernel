@@ -38,9 +38,9 @@ pub unsafe extern "C" fn start_rust(arg_offset: u32, ss_offset: u32, rpt_offset:
 /// handle_exception.
 #[link_section = ".trap.rust"]
 #[export_name = "_start_trap_rust"]
-pub extern "C" fn trap_handler(a0: u32, a1: u32, a2: u32, a3: u32, a4: u32, a5: u32, a6: u32, a7: u32) -> ! {
+pub extern "C" fn trap_handler(a0: usize, a1: usize, a2: usize, a3: usize, a4: usize, a5: usize, a6: usize, a7: usize) -> ! {
     extern "Rust" {
-        fn trap_handler(a0: u32, a1: u32, a2: u32, a3: u32, a4: u32, a5: u32, a6: u32, a7: u32) -> !;
+        fn trap_handler(a0: usize, a1: usize, a2: usize, a3: usize, a4: usize, a5: usize, a6: usize, a7: usize) -> !;
     }
 
     unsafe {
