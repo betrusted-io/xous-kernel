@@ -1,5 +1,4 @@
-use crate::definitions::{XousError, MemoryAddress, MemorySize};
-// use crate::syscalls::sys_memory_allocate;
+use crate::definitions::XousError;
 use core::fmt::{Error, Write};
 
 #[macro_export]
@@ -7,9 +6,10 @@ macro_rules! print
 {
 	($($args:tt)+) => ({
 			use core::fmt::Write;
-			let _ = write!(crate::debug::DEFAULT_UART, $($args)+);
+			let _ = write!(crate::debug::SUPERVISOR_UART, $($args)+);
 	});
 }
+
 #[macro_export]
 macro_rules! println
 {
@@ -24,51 +24,24 @@ macro_rules! println
 	});
 }
 
-#[macro_export]
-macro_rules! sprint
-{
-	($($args:tt)+) => ({
-			use core::fmt::Write;
-			let _ = write!(crate::debug::SUPERVISOR_UART, $($args)+);
-	});
-}
-
-#[macro_export]
-macro_rules! sprintln
-{
-	() => ({
-		sprint!("\r\n")
-	});
-	($fmt:expr) => ({
-		sprint!(concat!($fmt, "\r\n"))
-	});
-	($fmt:expr, $($args:tt)+) => ({
-		sprint!(concat!($fmt, "\r\n"), $($args)+)
-	});
-}
-
 pub struct Uart {
     pub base: *mut usize,
 }
-
-pub const DEFAULT_UART: Uart = Uart {
-    base: 0xE000_1800 as *mut usize,
-};
 
 pub const SUPERVISOR_UART: Uart = Uart {
     base: 0x001f_0000 as *mut usize,
 };
 
 impl Uart {
-    pub fn init(&self) -> Result<(), XousError> {
-        // sys_memory_allocate(
-        //     Some(MemoryAddress::new(0xe0001800).unwrap()),
-        //     Some(MemoryAddress::new(0xe0001800).unwrap()),
-        //     MemorySize::new(4096).unwrap(),
-        // )
-        // .expect("Couldn't identity map");
-        Ok(())
-    }
+    // pub fn init(&self) -> Result<(), XousError> {
+    //     // sys_memory_allocate(
+    //     //     Some(MemoryAddress::new(0xe0001800).unwrap()),
+    //     //     Some(MemoryAddress::new(0xe0001800).unwrap()),
+    //     //     MemorySize::new(4096).unwrap(),
+    //     // )
+    //     // .expect("Couldn't identity map");
+    //     Ok(())
+    // }
 
     pub fn enable_rx(self) {
         unsafe {
@@ -105,7 +78,7 @@ impl Uart {
 }
 
 pub fn irq(irq_number: usize) {
-    sprintln!(
+    println!(
         "Interrupt {}: Key pressed: {}",
         irq_number,
         SUPERVISOR_UART.getc().expect("no character queued despite interrupt") as char

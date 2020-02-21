@@ -85,12 +85,12 @@ impl SystemServices {
         };
 
         let ref mut ss = unsafe { &mut SYSTEM_SERVICES };
-        // sprintln!("Iterating over {} processes...", init_offsets.len());
+        // println!("Iterating over {} processes...", init_offsets.len());
         // Copy over the initial process list
         for init in init_offsets.iter() {
             let pid = (init.satp >> 22) & ((1 << 9) - 1);
             let ref mut process = ss.processes[(pid - 1) as usize];
-            // sprintln!("Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}",
+            // println!("Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}",
             // init.satp, pid, init.satp << 10, init.entrypoint, init.sp);
             process.satp = init.satp;
             process.pc = init.entrypoint;
@@ -120,32 +120,32 @@ impl SystemServices {
 
     pub fn resume_pid(&self, pid: XousPid) -> Result<(), XousError> {
         if pid == 0 {
-            sprintln!("PID is 0");
+            println!("PID is 0");
             return Err(XousError::ProcessNotFound);
         }
         // PID0 doesn't exist -- process IDs are offset by 1.
         let pid = pid as usize - 1;
         if self.processes[pid].satp == 0 {
-            sprintln!("Process is 0");
+            println!("Process is 0");
             return Err(XousError::ProcessNotFound);
         }
         if (self.processes[pid].satp >> 22 & ((1 << 9) - 1)) != (pid+1) as usize {
-            sprintln!("Process doesn't match ({} vs {})",
+            println!("Process doesn't match ({} vs {})",
             self.processes[pid].satp >> 22 & ((1 << 9) - 1), (pid+1));
             return Err(XousError::ProcessNotFound);
         }
 
         let pc = self.processes[pid].pc;
         let sp = self.processes[pid].sp;
-        sprintln!("Changing SATP: {:08x}", self.processes[pid].satp);
+        println!("Changing SATP: {:08x}", self.processes[pid].satp);
         satp::write(self.processes[pid].satp);
         // unsafe { flush_mmu() };
-        sprintln!("Setting SEPC");
+        println!("Setting SEPC");
         sepc::write(pc);
 
         // Return to user mode
         unsafe { sstatus::set_spp(sstatus::SPP::User) };
-        sprintln!(">>>>>> PID {}, SP: {:08x}, PC: {:08x}", (pid+1), sp as usize, pc as usize);
+        println!(">>>>>> PID {}, SP: {:08x}, PC: {:08x}", (pid+1), sp as usize, pc as usize);
         unsafe {
             use crate::mem::MemoryManager;
             let mm = MemoryManager::get();

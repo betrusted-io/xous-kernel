@@ -176,14 +176,14 @@ impl MemoryManager {
     }
 
     pub fn print(&self) {
-        sprintln!("Memory Maps:");
+        println!("Memory Maps:");
         let l1_pt = unsafe { &mut (*(PAGE_TABLE_ROOT_OFFSET as *mut RootPageTable)) };
         for (i, l1_entry) in l1_pt.entries.iter().enumerate() {
             if *l1_entry == 0 {
                 continue;
             }
             let superpage_addr = i as u32 * (1 << 22);
-            sprintln!(
+            println!(
                 "    {:4} Superpage for {:08x} @ {:08x} (flags: {:?})",
                 i,
                 superpage_addr,
@@ -197,7 +197,7 @@ impl MemoryManager {
                     continue;
                 }
                 let page_addr = j as u32 * (1 << 12);
-                sprintln!(
+                println!(
                     "        {:4} {:08x} -> {:08x} (flags: {:?})",
                     j,
                     superpage_addr + page_addr,
@@ -213,9 +213,9 @@ impl MemoryManager {
     pub fn alloc_page(&mut self, pid: XousPid) -> Result<usize, XousError> {
         // Go through all RAM pages looking for a free page.
         // Optimization: start from the previous address.
-        // sprintln!("Allocating page for PID {}", pid);
+        // println!("Allocating page for PID {}", pid);
         for index in 0..(self.ram_size as usize) / PAGE_SIZE {
-            // sprintln!("    Checking {:08x}...", index * PAGE_SIZE + self.ram_start as usize);
+            // println!("    Checking {:08x}...", index * PAGE_SIZE + self.ram_start as usize);
             if self.allocations[index] == 0 {
                 self.allocations[index] = pid + 1;
                 return Ok(index * PAGE_SIZE + self.ram_start);
@@ -374,7 +374,7 @@ impl MemoryManager {
             }
             offset += self.ram_size / PAGE_SIZE;
         }
-        // sprintln!("mem: unable to claim or release");
+        // println!("mem: unable to claim or release");
         Err(XousError::BadAddress)
     }
 

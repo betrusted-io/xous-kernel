@@ -16,13 +16,13 @@ pub fn handle(irqs_pending: usize) {
             if irqs_pending & (1 << irq_no) != 0 {
                 if let Some(f) = IRQ_HANDLERS[irq_no] {
                     // Call the IRQ handler
-                    // sprintln!("Calling handler");
+                    // println!("Calling handler");
                     f(irq_no);
                 } else {
                     // If there is no handler, mask this interrupt
                     // to prevent an IRQ storm.  This is considered
                     // an error.
-                    // sprintln!("Shutting it up");
+                    // println!("Shutting it up");
                     vsim::write(vsim::read() | (1 << irq_no));
                 }
             }

@@ -53,8 +53,8 @@ extern "Rust" {
 
 #[panic_handler]
 fn handle_panic(arg: &PanicInfo) -> ! {
-    sprintln!("PANIC!");
-    sprintln!("Details: {:?}", arg);
+    println!("PANIC!");
+    println!("Details: {:?}", arg);
     loop {}
 }
 
@@ -83,32 +83,32 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
     // memory_manager.print();
 
     debug::SUPERVISOR_UART.enable_rx();
-    sprintln!("KMAIN: Supervisor mode started...");
+    println!("KMAIN: Supervisor mode started...");
     unsafe {
         sstatus::set_sie();
         sie::set_ssoft();
         sie::set_sext();
     }
-    sprintln!("KMAIN: Interrupts enabled...");
-    sprintln!(
+    println!("KMAIN: Interrupts enabled...");
+    println!(
         "Runtime Pagetable Tracker offset: {:08x}",
         rpt_offset as u32
     );
-    sprintln!("Kernel arguments:");
+    println!("Kernel arguments:");
     for arg in args.iter() {
-        sprintln!("    {}", arg);
+        println!("    {}", arg);
     }
 
-    sprintln!("Processes:");
+    println!("Processes:");
     for (pid, process) in system_services.processes.iter().enumerate() {
         if process.satp != 0 {
-            sprintln!("   {}: {:?}", (pid as u32) + 1, process);
+            println!("   {}: {:?}", (pid as u32) + 1, process);
         }
     }
 
-    sprintln!("Calling Yield: {:?}", xous::rsyscall(xous::SysCall::Yield));
+    println!("Calling Yield: {:?}", xous::rsyscall(xous::SysCall::Yield));
     sys_interrupt_claim(3, debug::irq).expect("Couldn't claim interrupt 3");
-    sprintln!(
+    println!(
         "Switching to PID2 @ {:08x}",
         system_services.processes[1].pc
     );
@@ -116,7 +116,7 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
     // system_services
     //     .switch_to_pid(2)
     //     .expect("Couldn't switch to PID2");
-    sprint!("}} ");
+    print!("}} ");
     loop {}
     //     unsafe { vexriscv::asm::wfi() };
     // }
@@ -133,12 +133,12 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
 //     //     // mstatus::set_spie();
 //     // }
 
-//     sprintln!("KMAIN: In User mode");
+//     println!("KMAIN: In User mode");
 //     let uart = debug::SUPERVISOR_UART;
 //     // uart.init();
 
-//     sprintln!("kmain: SATP: {:08x}", satp::read().bits());
-//     sprintln!("kmain: MSTATUS: {:?}", mstatus::read());
+//     println!("kmain: SATP: {:08x}", satp::read().bits());
+//     println!("kmain: MSTATUS: {:?}", mstatus::read());
 
 //     // sys_interrupt_claim(0, timer::irq).unwrap();
 //     // timer::time_init();
@@ -146,8 +146,8 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
 //     // Enable "RX_EMPTY" interrupt
 //     uart.enable_rx();
 
-//     sprintln!("Entering main loop");
-//     sprintln!("Attempting to disable the MMU ({:08x}):", satp::read().bits());
+//     println!("Entering main loop");
+//     println!("Attempting to disable the MMU ({:08x}):", satp::read().bits());
 //     satp::write(0);
 //     println!("Done!  Now: {:08x}", satp::read().bits());
 //     // let mut last_time = timer::get_time();
@@ -175,11 +175,11 @@ pub fn trap_handler(
     use xous::{SysCall, XousResult};
     let call = SysCall::from_args(a0, a1, a2, a3, a4, a5, a6, a7);
     let sc = scause::read();
-    // sprintln!("Entered trap handler");
+    // println!("Entered trap handler");
     if (sc.bits() == 9) || (sc.bits() == 8) {
         let is_user = sc.bits() == 8;
         sepc::write(sepc::read() + 4);
-        // sprintln!(
+        // println!(
         //     "Syscall {:08x}: {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}",
         //     a0,
         //     a1,
@@ -190,7 +190,7 @@ pub fn trap_handler(
         //     a6,
         //     a7
         // );
-        // sprintln!("   Syscall: {:?}", call);
+        // println!("   Syscall: {:?}", call);
         let call = call.unwrap_or_else(|_| {
             unsafe { xous_syscall_return_fast(9, 3, 1, 7, 5, 3, 0, 9) };
         });
@@ -214,19 +214,14 @@ pub fn trap_handler(
             },
             c => XousResult::XousError(1),
         };
-        sprintln!("Call: {:?}  Result: {:?}", call, response);
+        println!("Call: {:?}  Result: {:?}", call, response);
         unsafe { xous_syscall_return_rust(&response) };
-        // unsafe { xous_syscall_return_fast(9, 3, 1, 7, 5, 3, 0, 9) };
-        // unsafe { xous_syscall_return_rust(&xous::XousResult::MaxResult6(a1+100, a2+100, a3+100, a4+100, a5+100, a6+100, a7+100)) };
-        // unsafe { xous_syscall_return(&xous::XousResult::XousError(8675309)) };
-        // unsafe { xous_syscall_return_fast(xous::XousResult::MaxResult5(1, 2, 3, 4, 5, 6, 7)) };
-        // unsafe { fast_return_from_syscall_8(1, 2, 3, 4, 5, 6, 7, 8) };
     }
 
     let ex = exception::RiscvException::from_regs(sc.bits(), sepc::read(), stval::read());
     if sc.is_exception() {
         let pid = satp::read().asid();
-        sprintln!("CPU Exception on PID {}: {}", pid, ex);
+        println!("CPU Exception on PID {}: {}", pid, ex);
         unsafe {
             let mm = MemoryManager::get();
             mm.print();
@@ -235,7 +230,7 @@ pub fn trap_handler(
     } else {
         let irqs_pending = vsip::read();
         irq::handle(irqs_pending);
-        // sprintln!("Other exception: {}  (irqs_pending: {:08x})", ex, irqs_pending);
+        // println!("Other exception: {}  (irqs_pending: {:08x})", ex, irqs_pending);
     }
     loop {}
 }
