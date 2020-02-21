@@ -3,28 +3,28 @@ use crate::definitions::{XousError, XousPid};
 use core::slice;
 use vexriscv::register::{satp, sepc};
 
-const MAX_PROCESS_COUNT: usize = 255;
+const MAX_PROCESS_COUNT: usize = 32;
 
 extern "C" {
-    fn return_to_user(satp: usize, pc: usize, sp: usize) -> !;
+    fn return_to_user(satp: usize, pc: usize, sp: usize, regs: *const usize) -> !;
 }
 
 #[derive(Default, Copy, Clone)]
 pub struct Process {
     /// The absolute MMU address.  If 0, then this process is free.
-    pub satp: u32,
+    pub satp: usize,
 
-    /// The last address of the program counter
-    pub pc: u32,
-
-    /// Address of the stack pointer
-    pub sp: u32,
-
-    /// CPU registers
-    pub regs: [u32; 29],
+    /// All registers (except $zero, $sp, and $pc)
+    pub regs: [usize; 29],
 
     /// Where this process is in terms of lifecycle
     pub state: u32,
+
+    /// Address of the stack pointer
+    pub sp: usize,
+
+    /// The last address of the program counter
+    pub pc: usize,
 }
 
 #[repr(C)]
@@ -34,13 +34,13 @@ pub struct Process {
 pub struct InitialProcess {
     /// The RISC-V SATP value, which includes the offset of the root page
     /// table plus the process ID.
-    satp: u32,
+    satp: usize,
 
     /// Where execution begins
-    entrypoint: u32,
+    entrypoint: usize,
 
     /// Address of the top of the stack
-    sp: u32,
+    sp: usize,
 }
 
 /// A big unifying struct containing all of the system state.
@@ -109,11 +109,10 @@ impl SystemServices {
             return Err(XousError::ProcessNotFound);
         }
 
-        let satp = self.processes[pid].satp as usize;
-        let pc = self.processes[pid].pc as usize;
-        let sp = self.processes[pid].sp as usize;
-        let new_satp = (satp >> 12) | ((pid) << 22) | (1 << 31);
-        unsafe { return_to_user(new_satp, pc, sp) };
+        let satp = self.processes[pid].satp;
+        let pc = self.processes[pid].pc;
+        let sp = self.processes[pid].sp;
+        unsafe { return_to_user(satp, pc, sp, self.processes[pid].regs.as_ptr()) };
     }
     // /// Switch to the new PID when we return to supervisor mode
     // pub fn switch_to(&self, pid: XousPid, pc: usize) -> Result<(), XousError> {
