@@ -104,29 +104,15 @@ impl SystemServices {
         &mut SYSTEM_SERVICES
     }
 
-    pub fn switch_to_pid_at(&self, pid: XousPid, pc: *const usize, sp: *mut usize) -> Result<(), XousError> {
+    fn get_process(&self, pid: XousPid) -> Result<&Process, XousError> {
         if pid == 0 {
+            println!("Process not found -- PID is 0");
             return Err(XousError::ProcessNotFound);
         }
         // PID0 doesn't exist -- process IDs are offset by 1.
         let pid = pid as usize - 1;
         if self.processes[pid].satp == 0 {
-            return Err(XousError::ProcessNotFound);
-        }
-        satp::write(self.processes[pid].satp);
-        sepc::write(pc as usize);
-        unsafe { return_to_user(sp as usize, self.processes[pid].regs.as_ptr()) };
-    }
-
-    pub fn resume_pid(&self, pid: XousPid) -> Result<(), XousError> {
-        if pid == 0 {
-            println!("PID is 0");
-            return Err(XousError::ProcessNotFound);
-        }
-        // PID0 doesn't exist -- process IDs are offset by 1.
-        let pid = pid as usize - 1;
-        if self.processes[pid].satp == 0 {
-            println!("Process is 0");
+            println!("Process not found -- SATP is 0");
             return Err(XousError::ProcessNotFound);
         }
         if (self.processes[pid].satp >> 22 & ((1 << 9) - 1)) != (pid+1) as usize {
@@ -134,12 +120,35 @@ impl SystemServices {
             self.processes[pid].satp >> 22 & ((1 << 9) - 1), (pid+1));
             return Err(XousError::ProcessNotFound);
         }
+        println!("Found PID");
+        Ok(&self.processes[pid])
+    }
 
-        let pc = self.processes[pid].pc;
-        let sp = self.processes[pid].sp;
-        println!("Changing SATP: {:08x}", self.processes[pid].satp);
-        satp::write(self.processes[pid].satp);
-        // unsafe { flush_mmu() };
+    pub fn make_callback_to(&self, pid: XousPid, pc: *const usize, arg: *mut usize) -> Result<(), XousError> {
+        let process = self.get_process(pid)?;
+        satp::write(process.satp);
+        sepc::write(pc as usize);
+        let mut regs = [0; 29];
+        regs[9] = arg as usize;
+        regs[0] = 0x50105017;
+        unsafe { sstatus::set_spp(sstatus::SPP::Supervisor) };
+        unsafe { return_to_user(process.sp, regs.as_ptr()) };
+    }
+
+    pub fn switch_to_pid_at(&self, pid: XousPid, pc: *const usize, sp: *mut usize) -> Result<(), XousError> {
+        let process = self.get_process(pid)?;
+        satp::write(process.satp);
+        sepc::write(pc as usize);
+        unsafe { return_to_user(sp as usize, process.regs.as_ptr()) };
+    }
+
+    pub fn resume_pid(&self, pid: XousPid) -> Result<(), XousError> {
+        let process = self.get_process(pid)?;
+
+        let pc = process.pc;
+        let sp = process.sp;
+        println!("Changing SATP: {:08x}", process.satp);
+        satp::write(process.satp);
         println!("Setting SEPC");
         sepc::write(pc);
 
@@ -151,6 +160,6 @@ impl SystemServices {
             let mm = MemoryManager::get();
             mm.print();
         }
-        unsafe { return_to_user(sp, self.processes[pid].regs.as_ptr()) };
+        unsafe { return_to_user(sp, process.regs.as_ptr()) };
     }
 }

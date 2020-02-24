@@ -24,9 +24,6 @@ mod processtable;
 mod syscalls;
 mod timer;
 
-pub use irq::sys_interrupt_claim;
-
-use core::mem as core_mem;
 use core::panic::PanicInfo;
 use mem::{MMUFlags, MemoryManager};
 use processtable::SystemServices;
@@ -107,7 +104,12 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
     }
 
     println!("Calling Yield: {:?}", xous::rsyscall(xous::SysCall::Yield));
-    sys_interrupt_claim(3, debug::irq).expect("Couldn't claim interrupt 3");
+    xous::rsyscall(xous::SysCall::ClaimInterrupt(
+        3,
+        debug::irq as *mut usize,
+        0 as *mut usize,
+    ))
+    .expect("Couldn't claim interrupt 3");
     println!(
         "Switching to PID2 @ {:08x}",
         system_services.processes[1].pc
@@ -175,6 +177,7 @@ pub fn trap_handler(
     use xous::{SysCall, XousResult};
     let call = SysCall::from_args(a0, a1, a2, a3, a4, a5, a6, a7);
     let sc = scause::read();
+    let pid = satp::read().asid();
     // println!("Entered trap handler");
     if (sc.bits() == 9) || (sc.bits() == 8) {
         let is_user = sc.bits() == 8;
@@ -198,9 +201,19 @@ pub fn trap_handler(
         let response = match &call {
             SysCall::MapMemory(phys, virt, size, flags) => unsafe {
                 let mm = MemoryManager::get();
-                mm.map_page(*phys, *virt, MMUFlags::R | MMUFlags::W | (if is_user { MMUFlags::USER } else { MMUFlags::NONE }))
-                    .map(|x| XousResult::MemoryAddress(x.get() as *mut usize))
-                    .unwrap_or(XousResult::XousError(2))
+                mm.map_page(
+                    *phys,
+                    *virt,
+                    MMUFlags::R
+                        | MMUFlags::W
+                        | (if is_user {
+                            MMUFlags::USER
+                        } else {
+                            MMUFlags::NONE
+                        }),
+                )
+                .map(|x| XousResult::MemoryAddress(x.get() as *mut usize))
+                .unwrap_or(XousResult::XousError(2))
             },
             SysCall::SwitchTo(pid, pc, sp) => unsafe {
                 let ss = SystemServices::get();
@@ -212,6 +225,11 @@ pub fn trap_handler(
                 ss.resume_pid(*pid);
                 XousResult::XousError(1)
             },
+            SysCall::ClaimInterrupt(no, callback, arg) => {
+                irq::interrupt_claim(*no, pid as definitions::XousPid, *callback, *arg)
+                    .map(|_| XousResult::Ok)
+                    .unwrap_or(XousResult::XousError(3))
+            }
             c => XousResult::XousError(1),
         };
         println!("Call: {:?}  Result: {:?}", call, response);
@@ -220,7 +238,6 @@ pub fn trap_handler(
 
     let ex = exception::RiscvException::from_regs(sc.bits(), sepc::read(), stval::read());
     if sc.is_exception() {
-        let pid = satp::read().asid();
         println!("CPU Exception on PID {}: {}", pid, ex);
         unsafe {
             let mm = MemoryManager::get();

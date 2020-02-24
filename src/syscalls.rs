@@ -1,33 +1,6 @@
 use super::definitions::*;
 
-/// Claims an interrupt and unmasks it immediately.  The provided function will
-/// be called from within an interrupt context, but using the ordinary privilege level of
-/// the process.
-///
-/// # Errors
-///
-/// * **InterruptNotFound**: The specified interrupt isn't valid on this system
-/// * **InterruptInUse**: The specified interrupt has already been claimed
-#[allow(dead_code)]
-pub fn sys_interrupt_claim(irq: usize, f: fn(usize)) -> Result<(), XousError> {
-    crate::irq::sys_interrupt_claim(irq, f)
-}
 
-
-
-/// Allocates pages of memory, equal to a total of `size
-/// bytes.  If a physical address is specified, then this
-/// can be used to allocate regions such as memory-mapped I/O.
-/// If a virtual address is specified, then the returned
-/// pages are located at that address.  Otherwise, they
-/// are located at an unspecified offset.
-///
-/// # Errors
-///
-/// * **BadAlignment**: Either the physical or virtual addresses aren't page-aligned,
-///                     or the size isn't a multiple of the page width.
-/// * **OutOfMemory**: A contiguous chunk of memory couldn't be found, or the system's
-///                    memory size has been exceeded.
 // #[allow(dead_code)]
 // pub fn sys_memory_allocate(
 //     phys: Option<MemoryAddress>,

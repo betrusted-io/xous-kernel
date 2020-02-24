@@ -77,7 +77,7 @@ impl Uart {
     }
 }
 
-pub fn irq(irq_number: usize) {
+pub fn irq(irq_number: usize, _arg: usize) {
     println!(
         "Interrupt {}: Key pressed: {}",
         irq_number,

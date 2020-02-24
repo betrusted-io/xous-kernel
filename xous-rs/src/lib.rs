@@ -24,10 +24,35 @@ bitflags! {
 pub enum SysCall {
     // MaxResult1(usize, usize, usize, usize, usize, usize, usize),
     // MaxResult2(usize, usize, usize, usize, usize, usize, usize),
+
+    /// Allocates pages of memory, equal to a total of `size
+    /// bytes.  If a physical address is specified, then this
+    /// can be used to allocate regions such as memory-mapped I/O.
+    /// If a virtual address is specified, then the returned
+    /// pages are located at that address.  Otherwise, they
+    /// are located at an unspecified offset.
+    ///
+    /// # Errors
+    ///
+    /// * **BadAlignment**: Either the physical or virtual addresses aren't page-aligned,
+    ///                     or the size isn't a multiple of the page width.
+    /// * **OutOfMemory**: A contiguous chunk of memory couldn't be found, or the system's
+    ///                    memory size has been exceeded.
     MapMemory(*mut usize /* phys */, *mut usize /* virt */, usize /* region size */, MemoryFlags /* flags */),
+
     Yield,
     Suspend(XousPid, XousCpuId),
+
+    /// Claims an interrupt and unmasks it immediately.  The provided function will
+    /// be called from within an interrupt context, but using the ordinary privilege level of
+    /// the process.
+    ///
+    /// # Errors
+    ///
+    /// * **InterruptNotFound**: The specified interrupt isn't valid on this system
+    /// * **InterruptInUse**: The specified interrupt has already been claimed
     ClaimInterrupt(usize /* IRQ number */, *mut usize /* function pointer */, *mut usize /* argument */),
+
     FreeInterrupt(usize /* IRQ number */),
     Invalid(usize, usize, usize, usize, usize, usize, usize),
     SwitchTo(XousPid, *const usize /* pc */, *mut usize /* sp */),
@@ -108,6 +133,7 @@ pub enum XousResult {
     MaxResult6(u32, u32, u32, u32, u32, u32, u32),
     MaxResult7(u32, u32, u32, u32, u32, u32, u32),
     MaxResult8(u32, u32, u32, u32, u32, u32, u32),
+    Ok,
     XousError(XousError),
     MemoryAddress(*mut usize),
     ResumeResult(u32, u32, u32, u32, u32, u32),
