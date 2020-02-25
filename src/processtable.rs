@@ -53,7 +53,13 @@ pub struct SystemServices {
 }
 
 static mut SYSTEM_SERVICES: SystemServices = SystemServices {
-    processes: [Process { satp: 0, state: 0, pc: 0, sp: 0, regs: [0; 29]}; MAX_PROCESS_COUNT],
+    processes: [Process {
+        satp: 0,
+        state: 0,
+        pc: 0,
+        sp: 0,
+        regs: [0; 29],
+    }; MAX_PROCESS_COUNT],
 };
 
 impl core::fmt::Debug for Process {
@@ -115,16 +121,25 @@ impl SystemServices {
             println!("Process not found -- SATP is 0");
             return Err(XousError::ProcessNotFound);
         }
-        if (self.processes[pid].satp >> 22 & ((1 << 9) - 1)) != (pid+1) as usize {
-            println!("Process doesn't match ({} vs {})",
-            self.processes[pid].satp >> 22 & ((1 << 9) - 1), (pid+1));
+        if (self.processes[pid].satp >> 22 & ((1 << 9) - 1)) != (pid + 1) as usize {
+            println!(
+                "Process doesn't match ({} vs {})",
+                self.processes[pid].satp >> 22 & ((1 << 9) - 1),
+                (pid + 1)
+            );
             return Err(XousError::ProcessNotFound);
         }
         println!("Found PID");
         Ok(&self.processes[pid])
     }
 
-    pub fn make_callback_to(&self, pid: XousPid, pc: *const usize, irq_no: usize, arg: *mut usize) -> Result<(), XousError> {
+    pub fn make_callback_to(
+        &self,
+        pid: XousPid,
+        pc: *const usize,
+        irq_no: usize,
+        arg: *mut usize,
+    ) -> Result<(), XousError> {
         let process = self.get_process(pid)?;
         satp::write(process.satp);
         sepc::write(pc as usize);
@@ -165,7 +180,12 @@ impl SystemServices {
 
         // Return to user mode
         unsafe { sstatus::set_spp(sstatus::SPP::User) };
-        println!(">>>>>> PID {}, SP: {:08x}, PC: {:08x}", (pid+1), sp as usize, pc as usize);
+        println!(
+            ">>>>>> PID {}, SP: {:08x}, PC: {:08x}",
+            (pid + 1),
+            sp as usize,
+            pc as usize
+        );
         unsafe {
             use crate::mem::MemoryManager;
             let mm = MemoryManager::get();

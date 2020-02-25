@@ -134,7 +134,7 @@ pub fn trap_handler(
     let call = SysCall::from_args(a0, a1, a2, a3, a4, a5, a6, a7);
     let sc = scause::read();
     let pid = satp::read().asid();
-    let ref current_context = unsafe { &*(0x00801000 as *const irq::ProcessContext)};
+    let ref current_context = unsafe { &*(0x00801000 as *const irq::ProcessContext) };
     println!("Entered trap handler");
     if (sc.bits() == 9) || (sc.bits() == 8) {
         let is_user = sc.bits() == 8;
@@ -164,29 +164,26 @@ pub fn trap_handler(
                 if is_user {
                     flags |= MMUFlags::USER;
                 }
-                mm.map_page(
-                    *phys,
-                    *virt,
-                    flags,
-                )
-                .map(|x| XousResult::MemoryAddress(x.get() as *mut usize))
-                .unwrap_or_else(|e| XousResult::Error(e))
+                mm.map_page(*phys, *virt, flags)
+                    .map(|x| XousResult::MemoryAddress(x.get() as *mut usize))
+                    .unwrap_or_else(|e| XousResult::Error(e))
             },
             SysCall::SwitchTo(pid, pc, sp) => unsafe {
                 let ss = SystemServices::get();
-                XousResult::Error(ss.switch_to_pid_at(*pid, *pc, *sp)
-                .expect_err("context switch failed"))
+                XousResult::Error(
+                    ss.switch_to_pid_at(*pid, *pc, *sp)
+                        .expect_err("context switch failed"),
+                )
             },
             SysCall::Resume(pid) => unsafe {
                 let ss = SystemServices::get();
-                XousResult::Error(ss.resume_pid(*pid)
-                .expect_err("resume pid failed"))
+                XousResult::Error(ss.resume_pid(*pid).expect_err("resume pid failed"))
             },
             SysCall::ClaimInterrupt(no, callback, arg) => {
                 irq::interrupt_claim(*no, pid as definitions::XousPid, *callback, *arg)
                     .map(|_| XousResult::Ok)
                     .unwrap_or_else(|e| XousResult::Error(e))
-                }
+            }
             _ => XousResult::Error(XousError::UnhandledSyscall),
         };
         println!("Call: {:?}  Result: {:?}", call, response);
