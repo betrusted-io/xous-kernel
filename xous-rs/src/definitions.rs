@@ -15,8 +15,8 @@ pub type XousSid = usize;
 /// Equivalent to a RISC-V Hart ID
 pub type XousCpuId = usize;
 
-#[derive(Debug)]
 #[repr(C)]
+#[derive(Debug, PartialEq)]
 pub enum XousError {
     NoError = 0,
     BadAlignment = 1,

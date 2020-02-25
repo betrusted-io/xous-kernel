@@ -159,7 +159,7 @@ impl fmt::Display for RiscvException {
             }
             // --reserved--
             StorePageFault(epc, mtval) => {
-                write!(f, "Load page fault of 0x{:08x} at 0x{:08x}", mtval, epc)
+                write!(f, "Store page fault of 0x{:08x} at 0x{:08x}", mtval, epc)
             }
             ReservedFault(code, epc, mtval) => write!(
                 f,

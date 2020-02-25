@@ -6,7 +6,7 @@ use core::slice;
 use core::str;
 use vexriscv::register::satp;
 
-const USER_STACK_OFFSET: usize = 0xdfff_fffc;
+pub const USER_STACK_OFFSET: usize = 0xdfff_fffc;
 const PAGE_TABLE_OFFSET: usize = 0x0040_0000;
 const PAGE_TABLE_ROOT_OFFSET: usize = 0x0080_0000;
 const USER_AREA_START: usize = 0x00c0_0000;
@@ -285,12 +285,65 @@ impl MemoryManager {
         }
 
         // Ensure the entry hasn't already been mapped.
-        // if l0_pt[vpn0 as usize] & 1 != 0 {
-        //     panic!("Page already allocated!");
-        // }
+        if l0_pt.entries[vpn0 as usize] & 1 != 0 {
+            println!("Page {:08x} already allocated!", virt);
+        }
         l0_pt.entries[vpn0 as usize] = (ppn1 << 20)
             | (ppn0 << 10)
             | (flags | MMUFlags::VALID | MMUFlags::D | MMUFlags::A).bits();
+        unsafe { flush_mmu() };
+
+        Ok(())
+    }
+
+    /// Ummap the given page from the specified process table.  Never
+    /// allocate a new page.
+    ///
+    /// # Errors
+    ///
+    /// * BadAddress - Address was not already mapped.
+    fn unmap_page_inner(
+        &mut self,
+        _pid: XousPid,
+        phys: usize,
+        virt: usize,
+        _flags: MMUFlags,
+    ) -> Result<(), XousError> {
+        let ppn1 = (phys >> 22) & ((1 << 12) - 1);
+        let ppn0 = (phys >> 12) & ((1 << 10) - 1);
+        let ppo = (phys >> 0) & ((1 << 12) - 1);
+
+        let vpn1 = (virt >> 22) & ((1 << 10) - 1);
+        let vpn0 = (virt >> 12) & ((1 << 10) - 1);
+        let vpo = (virt >> 0) & ((1 << 12) - 1);
+
+        assert!(ppn1 < 4096);
+        assert!(ppn0 < 1024);
+        assert!(ppo < 4096);
+        assert!(vpn1 < 1024);
+        assert!(vpn0 < 1024);
+        assert!(vpo < 4096);
+
+        // The root (l1) pagetable is defined to be mapped into our virtual
+        // address space at this address.
+        let l1_pt = unsafe { &mut (*(PAGE_TABLE_ROOT_OFFSET as *mut RootPageTable)) };
+        let ref mut l1_pt = l1_pt.entries;
+
+        // Subsequent pagetables are defined as being mapped starting at
+        // offset 0x0020_0004, so 4 must be added to the ppn1 value.
+        let l0pt_virt = PAGE_TABLE_OFFSET + vpn1 * PAGE_SIZE;
+        let ref mut l0_pt = unsafe { &mut (*(l0pt_virt as *mut LeafPageTable)) };
+
+        // Allocate a new level 1 pagetable entry if one doesn't exist.
+        if l1_pt[vpn1 as usize] & MMUFlags::VALID.bits() == 0 {
+            return Err(XousError::BadAddress);
+        }
+
+        // Ensure the entry hasn't already been mapped.
+        if l0_pt.entries[vpn0 as usize] & 1 == 0 {
+            return Err(XousError::BadAddress);
+        }
+        l0_pt.entries[vpn0 as usize] = 0;
         unsafe { flush_mmu() };
 
         Ok(())
@@ -314,7 +367,6 @@ impl MemoryManager {
         self.claim_page(phys, pid)?;
         match self.map_page_inner(pid, phys as usize, virt as usize, flags) {
             Ok(_) => {
-                unsafe { flush_mmu() };
                 MemoryAddress::new(virt as usize).ok_or(XousError::BadAddress)
             }
             Err(e) => {
@@ -322,6 +374,25 @@ impl MemoryManager {
                 Err(e)
             }
         }
+    }
+
+    /// Attempt to map the given physical address into the virtual address space
+    /// of this process.
+    ///
+    /// # Errors
+    ///
+    /// * MemoryInUse - The specified page is already mapped
+    pub fn unmap_page(
+        &mut self,
+        phys: *mut usize,
+        virt: *mut usize,
+        flags: MMUFlags,
+    ) -> Result<(), XousError> {
+        let current_satp = satp::read().bits();
+        let pid = ((current_satp >> 22) & ((1 << 9) - 1)) as XousPid;
+
+        self.release_page(phys, pid)?;
+        self.unmap_page_inner(pid, phys as usize, virt as usize, flags)
     }
 
     fn claim_or_release(
@@ -357,7 +428,7 @@ impl MemoryManager {
 
         let mut offset = 0;
         // Happy path: The address is in main RAM
-        if addr > self.ram_start && addr < self.ram_start + self.ram_size {
+        if addr >= self.ram_start && addr < self.ram_start + self.ram_size {
             offset += (addr - self.ram_start) / PAGE_SIZE;
             return action_inner(&mut self.allocations[offset], pid, action);
         }
@@ -366,7 +437,7 @@ impl MemoryManager {
         // Go through additional regions looking for this address, and claim it
         // if it's not in use.
         for region in self.extra {
-            if addr > (region.mem_start as usize)
+            if addr >= (region.mem_start as usize)
                 && addr < (region.mem_start + region.mem_size) as usize
             {
                 offset += (addr - (region.mem_start as usize)) / PAGE_SIZE;
@@ -374,7 +445,7 @@ impl MemoryManager {
             }
             offset += self.ram_size / PAGE_SIZE;
         }
-        // println!("mem: unable to claim or release");
+        println!("mem: unable to claim or release physical address {:08x}", addr);
         Err(XousError::BadAddress)
     }
 

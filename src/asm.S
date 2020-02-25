@@ -212,6 +212,7 @@ xous_syscall_resume_context:
     // Save SATP as well
     LOAD        t0, 31*REGBYTES(sp)
     csrw        satp, t0
+    sfence.vma
 
     // Save SSTATUS as well
     LOAD        t0, 32*REGBYTES(sp)

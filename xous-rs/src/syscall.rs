@@ -119,7 +119,7 @@ impl SysCall {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum XousResult {
     MaxResult1(u32, u32, u32, u32, u32, u32, u32),
     MaxResult2(u32, u32, u32, u32, u32, u32, u32),

@@ -46,8 +46,5 @@ pub extern "C" fn trap_handler(a0: usize, a1: usize, a2: usize, a3: usize, a4: u
     unsafe {
         // dispatch trap to handler
         trap_handler(a0, a1, a2, a3, a4, a5, a6, a7);
-
-        // // mstatus, remain in M-mode after mret
-        // mstatus::set_mpp(mstatus::MPP::Machine);
     }
 }
