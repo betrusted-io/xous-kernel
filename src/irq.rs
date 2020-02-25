@@ -4,15 +4,6 @@ use vexriscv::register::{sstatus, vsim, sie};
 
 static mut IRQ_HANDLERS: [Option<(XousPid, *mut usize, *mut usize)>; 32] = [None; 32];
 
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct ProcessContext {
-    pub registers: [usize; 31],
-    pub satp: usize,
-    pub sstatus: usize,
-    pub sepc: usize,
-}
-
 pub fn handle(irqs_pending: usize) -> Result<(), XousError> {
     // Unsafe is required here because we're accessing a static
     // mutable value, and it could be modified from various threads.

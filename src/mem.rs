@@ -57,7 +57,7 @@ impl fmt::Display for MemoryRangeExtra {
 
         write!(
             f,
-            "{} ({:08x}) {:08x} - {:08x} {} bytes):",
+            "{} ({:08x}) {:08x} - {:08x} {} bytes",
             s,
             self.mem_tag,
             self.mem_start,
@@ -72,6 +72,7 @@ pub struct MemoryManager {
     extra: &'static [MemoryRangeExtra],
     ram_start: usize,
     ram_size: usize,
+    ram_name: u32,
 }
 
 static mut MEMORY_MANAGER: MemoryManager = MemoryManager {
@@ -79,6 +80,7 @@ static mut MEMORY_MANAGER: MemoryManager = MemoryManager {
     extra: &[],
     ram_start: 0,
     ram_size: 0,
+    ram_name: 0,
 };
 
 /// A single RISC-V page table entry.  In order to resolve an address,
@@ -147,8 +149,9 @@ impl MemoryManager {
         assert!(xarg_def.data[1] == 1, "mm: xarg had unexpected version");
         mm.ram_start = xarg_def.data[2] as usize;
         mm.ram_size = xarg_def.data[3] as usize;
+        mm.ram_name = xarg_def.data[4];
 
-        let mut mem_size = mm.ram_size;
+        let mut mem_size = mm.ram_size / PAGE_SIZE;
         for tag in args_iter {
             if tag.name == make_type!("MREx") {
                 assert!(mm.extra.len() == 0, "mm: MREx tag appears twice!");
@@ -163,11 +166,11 @@ impl MemoryManager {
         }
 
         for range in mm.extra.iter() {
-            mem_size += range.mem_size as usize;
+            mem_size += range.mem_size as usize / PAGE_SIZE;
         }
 
         mm.allocations =
-            unsafe { slice::from_raw_parts_mut(base as *mut XousPid, mem_size as usize) };
+            unsafe { slice::from_raw_parts_mut(base as *mut XousPid, mem_size) };
         Ok(unsafe { &mut MEMORY_MANAGER })
     }
 
@@ -175,7 +178,7 @@ impl MemoryManager {
         &mut MEMORY_MANAGER
     }
 
-    pub fn print(&self) {
+    pub fn print_map(&self) {
         println!("Memory Maps:");
         let l1_pt = unsafe { &mut (*(PAGE_TABLE_ROOT_OFFSET as *mut RootPageTable)) };
         for (i, l1_entry) in l1_pt.entries.iter().enumerate() {
@@ -207,6 +210,43 @@ impl MemoryManager {
             }
         }
     }
+
+    pub fn print_ownership(&self) {
+        println!("Ownership ({} bytes in all):", self.allocations.len());
+
+        let mut offset = 0;
+        unsafe {
+            // First, we build a &[u8]...
+            let name_bytes = self.ram_name.to_le_bytes();
+            // ... and then convert that slice into a string slice
+            let ram_name = str::from_utf8_unchecked(&name_bytes);
+            println!("    Region {} ({:08x}) {:08x} - {:08x} {} bytes:", ram_name, self.ram_name,
+        self.ram_start, self.ram_start + self.ram_size, self.ram_size);
+        };
+        for o in 0..self.ram_size/PAGE_SIZE {
+            if self.allocations[offset+o] != 0 {
+                println!("        {:08x} => {}", self.ram_size + o * PAGE_SIZE, self.allocations[o]);
+            }
+        }
+
+        offset += self.ram_size / PAGE_SIZE;
+
+        // Go through additional regions looking for this address, and claim it
+        // if it's not in use.
+        for region in self.extra {
+            println!("    Region {}:", region);
+            for o in 0..(region.mem_size as usize)/PAGE_SIZE {
+                if self.allocations[offset+o] != 0 {
+                    println!("        {:08x} => {}",
+                        (region.mem_start as usize) + o*PAGE_SIZE,
+                        self.allocations[offset+o]
+                    )
+                }
+            }
+            offset += region.mem_size as usize / PAGE_SIZE;
+        }
+    }
+
     /// Allocate a single page to the given process.
     /// Ensures the page is zeroed out prior to handing it over to
     /// the specified process.
@@ -217,7 +257,7 @@ impl MemoryManager {
         for index in 0..(self.ram_size as usize) / PAGE_SIZE {
             // println!("    Checking {:08x}...", index * PAGE_SIZE + self.ram_start as usize);
             if self.allocations[index] == 0 {
-                self.allocations[index] = pid + 1;
+                self.allocations[index] = pid;
                 return Ok(index * PAGE_SIZE + self.ram_start);
             }
         }
@@ -401,17 +441,18 @@ impl MemoryManager {
         pid: XousPid,
         action: ClaimOrRelease,
     ) -> Result<(), XousError> {
+
         fn action_inner(
             addr: &mut XousPid,
             pid: XousPid,
             action: ClaimOrRelease,
         ) -> Result<(), XousError> {
-            if *addr != 0 && *addr != pid + 1 {
+            if *addr != 0 && *addr != pid {
                 return Err(XousError::MemoryInUse);
             }
             match action {
                 ClaimOrRelease::Claim => {
-                    *addr = pid + 1;
+                    *addr = pid;
                 }
                 ClaimOrRelease::Release => {
                     *addr = 0;
@@ -443,7 +484,7 @@ impl MemoryManager {
                 offset += (addr - (region.mem_start as usize)) / PAGE_SIZE;
                 return action_inner(&mut self.allocations[offset], pid, action);
             }
-            offset += self.ram_size / PAGE_SIZE;
+            offset += region.mem_size as usize / PAGE_SIZE;
         }
         println!("mem: unable to claim or release physical address {:08x}", addr);
         Err(XousError::BadAddress)

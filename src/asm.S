@@ -116,9 +116,7 @@ _start_trap:
 
 .global return_to_user
 return_to_user:
-    sfence.vma
-    move        sp, a1
-    csrw        sscratch, a0
+    move        sp, a0
 
     LOAD        x1, 0*REGBYTES(sp)
     // Skip SP for now
@@ -153,7 +151,7 @@ return_to_user:
     LOAD        x31, 30*REGBYTES(sp)
 
     // Restore SP
-    csrr        sp, sscratch
+    LOAD        x2, 1*REGBYTES(sp)
     sret
 
 .global xous_syscall_return_rust

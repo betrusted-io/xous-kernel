@@ -23,7 +23,7 @@ mod syscalls;
 
 use core::panic::PanicInfo;
 use mem::{MMUFlags, MemoryManager};
-use processtable::SystemServices;
+use processtable::{SystemServices, ProcessContext};
 use vexriscv::register::{satp, scause, sepc, sie, sstatus, stval, vsip};
 use xous::*;
 
@@ -44,7 +44,7 @@ extern "Rust" {
     fn xous_syscall_return_rust(result: &XousResult) -> !;
     #[allow(unused)]
     fn xous_syscall_return(result: XousResult) -> !;
-    fn xous_syscall_resume_context(context: irq::ProcessContext) -> !;
+    fn xous_syscall_resume_context(context: ProcessContext) -> !;
 }
 
 #[panic_handler]
@@ -111,14 +111,14 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
     .expect("Couldn't claim interrupt 3");
     println!(
         "Switching to PID2 @ {:08x}",
-        system_services.processes[1].pc
+        system_services.processes[1].satp
     );
     xous::rsyscall(xous::SysCall::Resume(2)).expect("Couldn't switch to PID2");
     print!("}} ");
     loop {}
 }
 
-static mut PREVIOUS_CONTEXT: Option<irq::ProcessContext> = None;
+static mut PREVIOUS_CONTEXT: Option<ProcessContext> = None;
 
 #[no_mangle]
 pub fn trap_handler(
@@ -140,7 +140,7 @@ pub fn trap_handler(
     }
 
     let pid = satp::read().asid() as XousPid;
-    let ref current_context = unsafe { &*(0x00801000 as *const irq::ProcessContext) };
+    let ref current_context = ProcessContext::current();
     println!("Entered trap handler");
     if (sc.bits() == 9) || (sc.bits() == 8) {
         let is_user = sc.bits() == 8;
@@ -160,7 +160,10 @@ pub fn trap_handler(
                     println!("map: bad alignment of size {:08x}", size);
                     XousResult::Error(XousError::BadAlignment)
                 } else {
-                    println!("Mapping {:08x} -> {:08x} ({} bytes, flags: {:?})", *phys as u32, *virt as u32, size, req_flags);
+                    println!(
+                        "Mapping {:08x} -> {:08x} ({} bytes, flags: {:?})",
+                        *phys as u32, *virt as u32, size, req_flags
+                    );
                     let mm = MemoryManager::get();
                     let mut flags = MMUFlags::NONE;
                     if *req_flags & xous::MemoryFlags::R == xous::MemoryFlags::R {
@@ -178,31 +181,41 @@ pub fn trap_handler(
                     let mut last_mapped = 0;
                     let mut result = XousResult::Ok;
                     for offset in (0..*size).step_by(4096) {
-                        if let XousResult::Error(e) = mm.map_page(((*phys as usize) + offset) as *mut usize,
-                        ((*virt as usize) + offset) as *mut usize, flags)
+                        if let XousResult::Error(e) = mm
+                            .map_page(
+                                ((*phys as usize) + offset) as *mut usize,
+                                ((*virt as usize) + offset) as *mut usize,
+                                flags,
+                            )
                             .map(|x| XousResult::MemoryAddress(x.get() as *mut usize))
-                            .unwrap_or_else(|e| XousResult::Error(e)) {
-                                result = XousResult::Error(e);
-                                break;
+                            .unwrap_or_else(|e| XousResult::Error(e))
+                        {
+                            result = XousResult::Error(e);
+                            break;
                         }
                         last_mapped = offset;
                     }
                     if result != XousResult::Ok {
                         for offset in (0..last_mapped).step_by(4096) {
-                            mm.unmap_page(((*phys as usize) + offset) as *mut usize,
-                            ((*virt as usize) + offset) as *mut usize, flags)
-                                .expect("couldn't unmap page");
+                            mm.unmap_page(
+                                ((*phys as usize) + offset) as *mut usize,
+                                ((*virt as usize) + offset) as *mut usize,
+                                flags,
+                            )
+                            .expect("couldn't unmap page");
                         }
                     }
+                    mm.print_ownership();
                     result
                 }
             },
             SysCall::SwitchTo(pid, pc, sp) => unsafe {
-                let ss = SystemServices::get();
-                XousResult::Error(
-                    ss.switch_to_pid_at(*pid, *pc, *sp)
-                        .expect_err("context switch failed"),
-                )
+                unimplemented!();
+                // let ss = SystemServices::get();
+                // XousResult::Error(
+                //     ss.switch_to_pid_at(*pid, *pc, *sp)
+                //         .expect_err("context switch failed"),
+                // )
             },
             SysCall::Resume(pid) => unsafe {
                 let ss = SystemServices::get();
@@ -234,12 +247,21 @@ pub fn trap_handler(
         // If the CPU tries to store, assume it's blown out its stack and
         // allocate a new page there.
         if let RiscvException::StorePageFault(pc, sp) = ex {
-            assert!(pid > 1, "kernel store page fault (pc: {:08x}  target: {:08x})", pc, sp);
+            assert!(
+                pid > 1,
+                "kernel store page fault (pc: {:08x}  target: {:08x})",
+                pc,
+                sp
+            );
             // If the stack seems sane, simply give the user more stack.
             if sp < mem::USER_STACK_OFFSET && mem::USER_STACK_OFFSET - sp <= 262144 {
                 let mm = unsafe { MemoryManager::get() };
                 let new_page = mm.alloc_page(pid).expect("Couldn't allocate new page");
-                println!("Allocating new physical page {:08x} @ {:08x}", new_page, (sp & !4095));
+                println!(
+                    "Allocating new physical page {:08x} @ {:08x}",
+                    new_page,
+                    (sp & !4095)
+                );
                 mm.map_page(
                     new_page as *mut usize,
                     (sp & !4095) as *mut usize,
@@ -253,7 +275,7 @@ pub fn trap_handler(
         println!("CPU Exception on PID {}: {}", pid, ex);
         unsafe {
             let mm = MemoryManager::get();
-            mm.print();
+            mm.print_map();
         }
         loop {}
     } else {
