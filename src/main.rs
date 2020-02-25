@@ -114,53 +114,9 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
         system_services.processes[1].pc
     );
     xous::rsyscall(xous::SysCall::Resume(2)).expect("Couldn't switch to PID2");
-    // system_services
-    //     .switch_to_pid(2)
-    //     .expect("Couldn't switch to PID2");
     print!("}} ");
     loop {}
-    //     unsafe { vexriscv::asm::wfi() };
-    // }
 }
-
-// /// This function runs with the MMU enabled, as part of PID 1
-// #[no_mangle]
-// fn kmain() -> ! {
-//     // unsafe {
-//     //     vmim::write(0); // Disable all machine interrupts
-//     //     mie::set_msoft();
-//     //     mie::set_mtimer();
-//     //     mie::set_mext();
-//     //     // mstatus::set_spie();
-//     // }
-
-//     println!("KMAIN: In User mode");
-//     let uart = debug::SUPERVISOR_UART;
-//     // uart.init();
-
-//     println!("kmain: SATP: {:08x}", satp::read().bits());
-//     println!("kmain: MSTATUS: {:?}", mstatus::read());
-
-//     // sys_interrupt_claim(0, timer::irq).unwrap();
-//     // timer::time_init();
-
-//     // Enable "RX_EMPTY" interrupt
-//     uart.enable_rx();
-
-//     println!("Entering main loop");
-//     println!("Attempting to disable the MMU ({:08x}):", satp::read().bits());
-//     satp::write(0);
-//     println!("Done!  Now: {:08x}", satp::read().bits());
-//     // let mut last_time = timer::get_time();
-//     loop {
-//         // let new_time = timer::get_time();
-//         // if new_time >= last_time + 1000 {
-//         //     last_time = new_time;
-//         //     println!("Uptime: {} ms", new_time);
-//         // }
-//         // unsafe { vexriscv::asm::wfi() };
-//     }
-// }
 
 static mut PREVIOUS_CONTEXT: Option<irq::ProcessContext> = None;
 
