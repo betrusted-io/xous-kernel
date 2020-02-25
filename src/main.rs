@@ -207,24 +207,24 @@ pub fn trap_handler(
                         }),
                 )
                 .map(|x| XousResult::MemoryAddress(x.get() as *mut usize))
-                .unwrap_or(XousResult::XousError(2))
+                .unwrap_or_else(|e| XousResult::Error(e))
             },
             SysCall::SwitchTo(pid, pc, sp) => unsafe {
                 let ss = SystemServices::get();
-                ss.switch_to_pid_at(*pid, *pc, *sp);
-                XousResult::XousError(1)
+                XousResult::Error(ss.switch_to_pid_at(*pid, *pc, *sp)
+                .expect_err("context switch failed"))
             },
             SysCall::Resume(pid) => unsafe {
                 let ss = SystemServices::get();
-                ss.resume_pid(*pid);
-                XousResult::XousError(1)
+                XousResult::Error(ss.resume_pid(*pid)
+                .expect_err("resume pid failed"))
             },
             SysCall::ClaimInterrupt(no, callback, arg) => {
                 irq::interrupt_claim(*no, pid as definitions::XousPid, *callback, *arg)
                     .map(|_| XousResult::Ok)
-                    .unwrap_or(XousResult::XousError(3))
-            }
-            c => XousResult::XousError(1),
+                    .unwrap_or_else(|e| XousResult::Error(e))
+                }
+            c => XousResult::Error(XousError::UnhandledSyscall),
         };
         println!("Call: {:?}  Result: {:?}", call, response);
         unsafe { xous_syscall_return_rust(&response) };

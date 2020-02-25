@@ -18,19 +18,21 @@ pub type XousCpuId = usize;
 #[derive(Debug)]
 #[repr(C)]
 pub enum XousError {
-    BadAlignment,
-    BadAddress,
-    OutOfMemory,
-    MemoryInUse,
-    InterruptNotFound,
-    InterruptInUse,
-    InvalidString,
-    ServerExists,
-    ServerNotFound,
-    ProcessNotFound,
-    ProcessNotChild,
-    ProcessTerminated,
-    Timeout,
+    NoError = 0,
+    BadAlignment = 1,
+    BadAddress = 2,
+    OutOfMemory = 3,
+    MemoryInUse = 4,
+    InterruptNotFound = 5,
+    InterruptInUse = 6,
+    InvalidString = 7,
+    ServerExists = 8,
+    ServerNotFound = 9,
+    ProcessNotFound = 10,
+    ProcessNotChild = 11,
+    ProcessTerminated = 12,
+    Timeout = 13,
+    UnhandledSyscall = 14,
 }
 
 #[repr(C)]

@@ -1,4 +1,4 @@
-use crate::{XousPid, XousCpuId};
+use crate::{XousPid, XousCpuId, XousError};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
@@ -112,13 +112,11 @@ pub enum XousResult {
     MaxResult7(u32, u32, u32, u32, u32, u32, u32),
     MaxResult8(u32, u32, u32, u32, u32, u32, u32),
     Ok,
-    XousError(XousError),
+    Error(XousError),
     MemoryAddress(*mut usize),
     ResumeResult(u32, u32, u32, u32, u32, u32),
     UnknownResult(u32, u32, u32, u32, u32, u32, u32),
 }
-
-pub type XousError = u32;
 
 pub type SyscallResult = Result<XousResult, XousError>;
 
@@ -134,7 +132,7 @@ pub fn rsyscall(call: SysCall) -> SyscallResult {
     let args = call.as_args();
     unsafe { _xous_syscall(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], &mut ret) };
     match ret {
-        XousResult::XousError(e) => Err(e),
+        XousResult::Error(e) => Err(e),
         other => Ok(other)
     }
 }
@@ -146,7 +144,7 @@ pub fn dangerous_syscall(call: SysCall) -> SyscallResult {
     let presto = unsafe { transmute::<_, (u32, u32, u32, u32, u32, u32, u32, u32)>(call) };
     unsafe { _xous_syscall_rust(presto.0, presto.1, presto.2, presto.3, presto.4, presto.5, presto.6, presto.7, &mut ret) };
     match ret {
-        XousResult::XousError(e) => Err(e),
+        XousResult::Error(e) => Err(e),
         other => Ok(other)
     }
 }
