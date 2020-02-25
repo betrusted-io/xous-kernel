@@ -124,14 +124,15 @@ impl SystemServices {
         Ok(&self.processes[pid])
     }
 
-    pub fn make_callback_to(&self, pid: XousPid, pc: *const usize, arg: *mut usize) -> Result<(), XousError> {
+    pub fn make_callback_to(&self, pid: XousPid, pc: *const usize, irq_no: usize, arg: *mut usize) -> Result<(), XousError> {
         let process = self.get_process(pid)?;
         satp::write(process.satp);
         sepc::write(pc as usize);
         let mut regs = [0; 29];
-        regs[9] = arg as usize;
-        regs[0] = 0x50105017;
-        unsafe { sstatus::set_spp(sstatus::SPP::Supervisor) };
+        regs[9] = irq_no as usize;
+        regs[10] = arg as usize;
+        regs[0] = 0x00802000;
+        unsafe { sstatus::set_spp(sstatus::SPP::User) };
         unsafe { return_to_user(process.sp, regs.as_ptr()) };
     }
 

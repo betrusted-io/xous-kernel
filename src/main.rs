@@ -46,6 +46,7 @@ extern "Rust" {
     fn xous_syscall_return_rust(result: &xous::XousResult) -> !;
     #[allow(unused)]
     fn xous_syscall_return(result: xous::XousResult) -> !;
+    fn xous_syscall_resume_context(context: irq::ProcessContext) -> !;
 }
 
 #[panic_handler]
@@ -60,20 +61,20 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
     let args = args::KernelArguments::new(arg_offset);
     let _memory_manager =
         MemoryManager::new(rpt_offset, &args).expect("couldn't create memory manager");
-    xous::rsyscall(xous::SysCall::MapMemory(
-        0xF0002000 as *mut usize,
-        debug::SUPERVISOR_UART.base,
-        4096,
-        xous::MemoryFlags::R | xous::MemoryFlags::W,
-    ))
-    .unwrap();
-    // memory_manager
-    //     .map_page(
-    //         0xF0002000 as *mut usize,
-    //         ((debug::SUPERVISOR_UART.base as u32) & !4095) as *mut usize,
-    //         MMUFlags::R | MMUFlags::W,
-    //     )
-    //     .expect("unable to map serial port");
+    // xous::rsyscall(xous::SysCall::MapMemory(
+    //     0xF0002000 as *mut usize,
+    //     debug::SUPERVISOR_UART.base,
+    //     4096,
+    //     xous::MemoryFlags::R | xous::MemoryFlags::W,
+    // ))
+    // .unwrap();
+    _memory_manager
+        .map_page(
+            0xF0002000 as *mut usize,
+            ((debug::SUPERVISOR_UART.base as u32) & !4095) as *mut usize,
+            MMUFlags::R | MMUFlags::W,
+        )
+        .expect("unable to map serial port");
     let system_services = SystemServices::new(init_offset, &args);
 
     // As a test, map the default UART into our memory space
@@ -163,6 +164,8 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
 //     }
 // }
 
+static mut PREVIOUS_CONTEXT: Option<irq::ProcessContext> = None;
+
 #[no_mangle]
 pub fn trap_handler(
     a0: usize,
@@ -178,22 +181,16 @@ pub fn trap_handler(
     let call = SysCall::from_args(a0, a1, a2, a3, a4, a5, a6, a7);
     let sc = scause::read();
     let pid = satp::read().asid();
-    // println!("Entered trap handler");
+    let ref current_context = unsafe { &*(0x00801000 as *const irq::ProcessContext)};
+    println!("Entered trap handler");
     if (sc.bits() == 9) || (sc.bits() == 8) {
         let is_user = sc.bits() == 8;
         sepc::write(sepc::read() + 4);
-        // println!(
-        //     "Syscall {:08x}: {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}",
-        //     a0,
-        //     a1,
-        //     a2,
-        //     a3,
-        //     a4,
-        //     a5,
-        //     a6,
-        //     a7
-        // );
-        // println!("   Syscall: {:?}", call);
+        println!(
+            "    Syscall {:08x}: {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}",
+            a0, a1, a2, a3, a4, a5, a6, a7
+        );
+        println!("   Decoded Syscall: {:?}", call);
         let call = call.unwrap_or_else(|_| {
             unsafe { xous_syscall_return_fast(9, 3, 1, 7, 5, 3, 0, 9) };
         });
@@ -238,16 +235,37 @@ pub fn trap_handler(
 
     let ex = exception::RiscvException::from_regs(sc.bits(), sepc::read(), stval::read());
     if sc.is_exception() {
-        println!("CPU Exception on PID {}: {}", pid, ex);
-        unsafe {
-            let mm = MemoryManager::get();
-            mm.print();
+        match ex {
+            exception::RiscvException::InstructionPageFault(0x00802000, _) => {
+                println!("Return from interrupt");
+                unsafe {
+                    if let Some(previous) = PREVIOUS_CONTEXT.take() {
+                        sie::set_sext();
+                        xous_syscall_resume_context(previous);
+                    }
+                }
+            }
+            ex => {
+                println!("CPU Exception on PID {}: {}", pid, ex);
+                unsafe {
+                    let mm = MemoryManager::get();
+                    mm.print();
+                }
+            }
         }
         loop {}
     } else {
         let irqs_pending = vsip::read();
+        println!(
+            "Other exception: {}  (irqs_pending: {:08x})",
+            ex, irqs_pending
+        );
+        unsafe {
+            if PREVIOUS_CONTEXT.is_none() {
+                PREVIOUS_CONTEXT = Some(**current_context);
+            }
+        }
         irq::handle(irqs_pending);
-        // println!("Other exception: {}  (irqs_pending: {:08x})", ex, irqs_pending);
     }
     loop {}
 }

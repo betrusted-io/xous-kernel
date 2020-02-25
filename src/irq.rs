@@ -1,8 +1,17 @@
 use crate::definitions::{XousError, XousPid};
 use crate::processtable::SystemServices;
-use vexriscv::register::{sstatus, vsim};
+use vexriscv::register::{sstatus, vsim, sie};
 
 static mut IRQ_HANDLERS: [Option<(XousPid, *mut usize, *mut usize)>; 32] = [None; 32];
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct ProcessContext {
+    pub registers: [usize; 31],
+    pub satp: usize,
+    pub sstatus: usize,
+    pub sepc: usize,
+}
 
 pub fn handle(irqs_pending: usize) -> Result<(), XousError> {
     // Unsafe is required here because we're accessing a static
@@ -17,8 +26,9 @@ pub fn handle(irqs_pending: usize) -> Result<(), XousError> {
                 if let Some((pid, f, arg)) = IRQ_HANDLERS[irq_no] {
                     let ss = SystemServices::get();
                     // Mask the IRQ and call the function
-                    vsim::write(vsim::read() | (1 << irq_no));
-                    ss.make_callback_to(pid, f, arg)?;
+                    // vsim::write(vsim::read() | (1 << irq_no));
+                    sie::clear_sext();
+                    ss.make_callback_to(pid, f, irq_no, arg)?;
                     // Call the IRQ handler
                     // println!("Calling handler");
                 } else {
