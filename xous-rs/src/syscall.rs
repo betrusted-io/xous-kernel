@@ -3,24 +3,42 @@ use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
 bitflags! {
+    /// Flags to be passed to the MapMemory struct.
+    /// Note that it is an error to have memory be
+    /// writable and not readable.
     pub struct MemoryFlags: usize {
+        /// Immediately allocate this memory.  Otherwise it will
+        /// be demand-paged.  This is implicitly set when `phys`
+        /// is not 0.
+        const RESERVE   = 0b00000001;
+
+        /// Allow the CPU to read from this page.
         const R         = 0b00000010;
+
+        /// Allow the CPU to write to this page.
         const W         = 0b00000100;
+
+        /// Allow the CPU to execute from this page.
         const X         = 0b00001000;
     }
 }
 
 #[derive(Debug)]
 pub enum SysCall {
-    // MaxResult1(usize, usize, usize, usize, usize, usize, usize),
-    // MaxResult2(usize, usize, usize, usize, usize, usize, usize),
-
     /// Allocates pages of memory, equal to a total of `size
     /// bytes.  If a physical address is specified, then this
     /// can be used to allocate regions such as memory-mapped I/O.
     /// If a virtual address is specified, then the returned
     /// pages are located at that address.  Otherwise, they
     /// are located at an unspecified offset.
+    ///
+    /// You can drop memory privileges by calling `MapMeory` with
+    /// the same `virt` parameter, but different `MemoryFlags`.
+    /// Note that you can only remove bits by doing this --
+    /// you cannot add bits.  For example, you could securely load
+    /// a program by mapping its `.text` section, then have it
+    /// drop read and write flags in order to make the text section
+    /// execute-only.
     ///
     /// # Errors
     ///
