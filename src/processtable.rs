@@ -132,11 +132,21 @@ impl SystemServices {
         regs[9] = irq_no as usize;
         regs[10] = arg as usize;
         regs[0] = 0x00802000;
-        unsafe { sstatus::set_spp(sstatus::SPP::User) };
+        let mode = if pid == 1 {
+            sstatus::SPP::Supervisor
+        } else {
+            sstatus::SPP::User
+        };
+        unsafe { sstatus::set_spp(mode) };
         unsafe { return_to_user(process.sp, regs.as_ptr()) };
     }
 
-    pub fn switch_to_pid_at(&self, pid: XousPid, pc: *const usize, sp: *mut usize) -> Result<(), XousError> {
+    pub fn switch_to_pid_at(
+        &self,
+        pid: XousPid,
+        pc: *const usize,
+        sp: *mut usize,
+    ) -> Result<(), XousError> {
         let process = self.get_process(pid)?;
         satp::write(process.satp);
         sepc::write(pc as usize);
