@@ -193,18 +193,25 @@ pub fn trap_handler(
         });
 
         let response = match &call {
-            SysCall::MapMemory(phys, virt, size, flags) => unsafe {
+            SysCall::MapMemory(phys, virt, size, req_flags) => unsafe {
                 let mm = MemoryManager::get();
+                let mut flags = MMUFlags::NONE;
+                if *req_flags & xous::MemoryFlags::R == xous::MemoryFlags::R {
+                    flags |= MMUFlags::R;
+                }
+                if *req_flags & xous::MemoryFlags::W == xous::MemoryFlags::W {
+                    flags |= MMUFlags::W;
+                }
+                if *req_flags & xous::MemoryFlags::X == xous::MemoryFlags::X {
+                    flags |= MMUFlags::X;
+                }
+                if is_user {
+                    flags |= MMUFlags::USER;
+                }
                 mm.map_page(
                     *phys,
                     *virt,
-                    MMUFlags::R
-                        | MMUFlags::W
-                        | (if is_user {
-                            MMUFlags::USER
-                        } else {
-                            MMUFlags::NONE
-                        }),
+                    flags,
                 )
                 .map(|x| XousResult::MemoryAddress(x.get() as *mut usize))
                 .unwrap_or_else(|e| XousResult::Error(e))
@@ -224,7 +231,7 @@ pub fn trap_handler(
                     .map(|_| XousResult::Ok)
                     .unwrap_or_else(|e| XousResult::Error(e))
                 }
-            c => XousResult::Error(XousError::UnhandledSyscall),
+            _ => XousResult::Error(XousError::UnhandledSyscall),
         };
         println!("Call: {:?}  Result: {:?}", call, response);
         unsafe { xous_syscall_return_rust(&response) };
