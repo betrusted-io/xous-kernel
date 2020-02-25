@@ -1,12 +1,14 @@
 use crate::args::KernelArguments;
 use crate::definitions::{XousError, XousPid};
+use core::mem;
 use core::slice;
 use vexriscv::register::{satp, sepc, sstatus};
 
-const MAX_PROCESS_COUNT: usize = 32;
+const MAX_PROCESS_COUNT: usize = 254;
+pub const RETURN_FROM_ISR: usize = 0x0080_2000;
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct ProcessContext {
     pub registers: [usize; 31],
     pub satp: usize,
@@ -18,9 +20,12 @@ impl ProcessContext {
     pub fn current() -> &'static mut ProcessContext {
         unsafe { &mut *(0x00801000 as *mut ProcessContext) }
     }
+    pub fn saved() -> &'static mut ProcessContext {
+        unsafe { &mut *((0x00801000 + mem::size_of::<ProcessContext>()) as *mut ProcessContext) }
+    }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum ProcessState {
     Free,
     Setup(usize /* entrypoint */, usize /* stack */),
@@ -39,6 +44,19 @@ pub struct Process {
 
     /// Where this process is in terms of lifecycle
     state: ProcessState,
+
+    /// The process that created this process, which tells
+    /// who is allowed to manipulate this process.
+    pub ppid: XousPid,
+}
+
+impl Process {
+    pub fn runnable(&self) -> bool {
+        match self.state {
+            ProcessState::Setup(_, _) | ProcessState::Ready => true,
+            _ => false,
+        }
+    }
 }
 
 #[repr(C)]
@@ -69,6 +87,7 @@ static mut SYSTEM_SERVICES: SystemServices = SystemServices {
     processes: [Process {
         satp: 0,
         state: ProcessState::Free,
+        ppid: 0,
     }; MAX_PROCESS_COUNT],
 };
 
@@ -107,6 +126,7 @@ impl SystemServices {
             // println!("Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}",
             // init.satp, pid, init.satp << 10, init.entrypoint, init.sp);
             process.satp = init.satp;
+            process.ppid = if pid == 1 { 0 } else { 1 };
             process.state = ProcessState::Setup(init.entrypoint, init.sp);
         }
 
@@ -117,7 +137,7 @@ impl SystemServices {
         &mut SYSTEM_SERVICES
     }
 
-    fn get_process(&mut self, pid: XousPid) -> Result<&mut Process, XousError> {
+    pub fn get_process(&mut self, pid: XousPid) -> Result<&mut Process, XousError> {
         if pid == 0 {
             println!("Process not found -- PID is 0");
             return Err(XousError::ProcessNotFound);
@@ -136,11 +156,10 @@ impl SystemServices {
             );
             return Err(XousError::ProcessNotFound);
         }
-        println!("Found PID");
         Ok(&mut self.processes[pid])
     }
 
-    fn current_process(&mut self) -> Result<&mut Process, XousError> {
+    fn current_pid(&mut self) -> XousPid {
         let pid = satp::read().asid() as XousPid;
         if pid == 0 {
             panic!("No current process!");
@@ -153,8 +172,7 @@ impl SystemServices {
         if self.processes[pid].satp != satp::read().bits() {
             panic!("Process SATP doesn't match!");
         }
-        println!("Found PID");
-        Ok(&mut self.processes[pid])
+        pid as XousPid + 1
     }
 
     pub fn make_callback_to(
@@ -164,64 +182,95 @@ impl SystemServices {
         irq_no: usize,
         arg: *mut usize,
     ) -> Result<(), XousError> {
-        let process = self.get_process(pid)?;
+        {
+            let current_pid = self.current_pid();
+            let mut current = self.get_process(current_pid).expect("couldn't get current PID");
+            assert_eq!(current.state, ProcessState::Running, "current process was not running");
+            current.state = ProcessState::Ready;
+        }
+
+        let mut process = self.get_process(pid)?;
+        assert_eq!(process.state, ProcessState::Ready, "target process was not ready");
+        process.state = ProcessState::Running;
+
+        // Switch to new process memory space
         satp::write(process.satp);
+
         let context = ProcessContext::current();
+
+        // Save previous context (if it's not already saved)
+        let saved = ProcessContext::saved();
+        if saved.satp == 0 {
+            println!("Saving SATP for PID {}", pid);
+            *saved = *context;
+        }
+
         sepc::write(pc as usize);
         let mut regs = [0; 31];
         regs[9] = irq_no as usize;
         regs[10] = arg as usize;
-        regs[0] = 0x00802000;
+        regs[0] = RETURN_FROM_ISR;
         regs[1] = context.registers[1];
         let mode = if pid == 1 {
             sstatus::SPP::Supervisor
         } else {
             sstatus::SPP::User
         };
+        println!("Callback to PID {}, SP: {:08x}, PC: {:08x}", pid, context.registers[1], pc as usize);
         unsafe { sstatus::set_spp(mode) };
         unsafe { return_to_user(regs.as_ptr()) };
     }
 
-    // pub fn switch_to_pid_at(
-    //     &self,
-    //     pid: XousPid,
-    //     pc: *const usize,
-    //     sp: *mut usize,
-    // ) -> Result<(), XousError> {
-    //     let process = self.get_process(pid)?;
-    //     satp::write(process.satp);
-    //     sepc::write(pc as usize);
-    //     unsafe { return_to_user(sp as usize, process.regs.as_ptr()) };
-    // }
-
     /// Resume the given process, picking up exactly where it left off.
     /// If the process is in the Setup state, set it up and then resume.
     pub fn resume_pid(&mut self, pid: XousPid) -> Result<(), XousError> {
-        let current = self.current_process().expect("couldn't get current process");
-        // XXX This should go back to "Running" upon failure!
-        current.state = ProcessState::Ready;
+        let previous_pid = self.current_pid();
 
-        let process = self.get_process(pid)?;
-        match process.state {
-            ProcessState::Free => return Err(XousError::ProcessNotFound),
-            _ => ()
+        // Save state if the PID has changed
+        let context = if pid != previous_pid {
+            let context = {
+                let new = self.get_process(pid)?;
+                match new.state {
+                    ProcessState::Free => return Err(XousError::ProcessNotFound),
+                    _ => (),
+                }
+
+                satp::write(new.satp);
+
+                let context = ProcessContext::current();
+
+                match new.state {
+                    ProcessState::Setup(entrypoint, stack) => {
+                        context.sepc = entrypoint;
+                        context.registers[1] = stack;
+                    }
+                    ProcessState::Free => panic!("process was suddenly Free"),
+                    ProcessState::Ready => (),
+                    ProcessState::Running => panic!("process was already running"),
+                }
+                new.state = ProcessState::Running;
+                context
+            };
+
+            // Mark the previous process as ready to run, since we just switched away
+            {
+                self.get_process(previous_pid)
+                    .expect("couldn't get previous pid")
+                    .state = ProcessState::Ready;
+            }
+            context
+        } else {
+            ProcessContext::current()
+        };
+
+        // Restore the previous context, if one exists.
+        let previous = ProcessContext::saved();
+        if previous.satp != 0 {
+            println!("Restoring previous context (current PC: {:08x}, new PC: {:08x})", context.sepc, previous.sepc);
+            *context = *previous;
+            previous.satp = 0;
         }
 
-        println!("Changing SATP: {:08x}", process.satp);
-        satp::write(process.satp);
-
-        let context = ProcessContext::current();
-
-        if let ProcessState::Setup(entrypoint, stack) = process.state {
-            println!("Process State is `setup`: {:08x} SP: {:08x}", entrypoint, stack);
-            context.sepc = entrypoint;
-            context.registers[1] = stack;
-        }
-        else {
-            println!("Process is already set up");
-        }
-        process.state = ProcessState::Running;
-        println!("Setting SEPC");
         sepc::write(context.sepc);
 
         // Return to user mode
@@ -232,16 +281,9 @@ impl SystemServices {
         }
 
         println!(
-            ">>>>>> PID {}, SP: {:08x}, PC: {:08x}",
-            pid,
-            context.registers[1],
-            context.sepc
+            "Switching to PID {}, SP: {:08x}, PC: {:08x}",
+            pid, context.registers[1], context.sepc
         );
-        unsafe {
-            use crate::mem::MemoryManager;
-            let mm = MemoryManager::get();
-            mm.print_map();
-        }
         unsafe { return_to_user(context.registers.as_ptr()) };
     }
 }
