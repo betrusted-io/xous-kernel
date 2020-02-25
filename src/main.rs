@@ -133,6 +133,12 @@ pub fn trap_handler(
 ) -> ! {
     let call = SysCall::from_args(a0, a1, a2, a3, a4, a5, a6, a7);
     let sc = scause::read();
+    // If we were previously in Supervisor mode and we've just tried to write
+    // to invalid memory, then we likely blew out the stack.
+    if sstatus::read().spp() == sstatus::SPP::Supervisor && sc.bits() == 0xf {
+        panic!("Ran out of kernel stack");
+    }
+
     let pid = satp::read().asid() as XousPid;
     let ref current_context = unsafe { &*(0x00801000 as *const irq::ProcessContext) };
     println!("Entered trap handler");
