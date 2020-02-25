@@ -1,4 +1,3 @@
-use crate::definitions::XousError;
 use core::fmt::{Error, Write};
 
 #[macro_export]
@@ -33,16 +32,6 @@ pub const SUPERVISOR_UART: Uart = Uart {
 };
 
 impl Uart {
-    // pub fn init(&self) -> Result<(), XousError> {
-    //     // sys_memory_allocate(
-    //     //     Some(MemoryAddress::new(0xe0001800).unwrap()),
-    //     //     Some(MemoryAddress::new(0xe0001800).unwrap()),
-    //     //     MemorySize::new(4096).unwrap(),
-    //     // )
-    //     // .expect("Couldn't identity map");
-    //     Ok(())
-    // }
-
     pub fn enable_rx(self) {
         unsafe {
             self.base

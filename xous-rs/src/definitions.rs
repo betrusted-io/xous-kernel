@@ -1,22 +1,22 @@
 use core::num::NonZeroUsize;
 
-#[allow(dead_code)] pub type MemoryAddress = NonZeroUsize;
-#[allow(dead_code)] pub type MemorySize = NonZeroUsize;
-#[allow(dead_code)] pub type StackPointer = usize;
-#[allow(dead_code)] pub type MessageId = usize;
+pub type MemoryAddress = NonZeroUsize;
+pub type MemorySize = NonZeroUsize;
+pub type StackPointer = usize;
+pub type MessageId = usize;
 
-#[allow(dead_code)] pub type XousPid = u8;
-#[allow(dead_code)] pub type XousMessageSender = usize;
-#[allow(dead_code)] pub type XousConnection = usize;
+pub type XousPid = u8;
+pub type XousMessageSender = usize;
+pub type XousConnection = usize;
 
 /// Server ID
-#[allow(dead_code)] pub type XousSid = usize;
+pub type XousSid = usize;
 
 /// Equivalent to a RISC-V Hart ID
-#[allow(dead_code)] pub type XousCpuId = usize;
+pub type XousCpuId = usize;
 
-#[allow(dead_code)]
 #[derive(Debug)]
+#[repr(C)]
 pub enum XousError {
     BadAlignment,
     BadAddress,
@@ -33,13 +33,13 @@ pub enum XousError {
     Timeout,
 }
 
-#[allow(dead_code)]
+#[repr(C)]
 pub struct XousContext {
     stack: StackPointer,
     pid: XousPid,
 }
 
-#[allow(dead_code)]
+#[repr(C)]
 pub struct XousMemoryMessage {
     id: MessageId,
     in_buf: Option<MemoryAddress>,
@@ -48,7 +48,7 @@ pub struct XousMemoryMessage {
     out_buf_size: Option<MemorySize>,
 }
 
-#[allow(dead_code)]
+#[repr(C)]
 pub struct XousScalarMessage {
     id: MessageId,
     arg1: usize,

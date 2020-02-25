@@ -15,19 +15,17 @@ mod start;
 
 #[macro_use]
 mod args;
-mod definitions;
 mod exception;
 mod irq;
-mod macros;
 mod mem;
 mod processtable;
 mod syscalls;
-mod timer;
 
 use core::panic::PanicInfo;
 use mem::{MMUFlags, MemoryManager};
 use processtable::SystemServices;
 use vexriscv::register::{satp, scause, sepc, sie, sstatus, stval, vsip};
+use xous::*;
 
 extern "C" {
     fn xous_syscall_return_fast(
@@ -43,9 +41,9 @@ extern "C" {
 }
 extern "Rust" {
     #[allow(unused)]
-    fn xous_syscall_return_rust(result: &xous::XousResult) -> !;
+    fn xous_syscall_return_rust(result: &XousResult) -> !;
     #[allow(unused)]
-    fn xous_syscall_return(result: xous::XousResult) -> !;
+    fn xous_syscall_return(result: XousResult) -> !;
     fn xous_syscall_resume_context(context: irq::ProcessContext) -> !;
 }
 
@@ -61,6 +59,9 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
     let args = args::KernelArguments::new(arg_offset);
     let _memory_manager =
         MemoryManager::new(rpt_offset, &args).expect("couldn't create memory manager");
+
+    // Either map memory using a syscall, or if we're debugging the syscall
+    // handler then directly map it.
     // xous::rsyscall(xous::SysCall::MapMemory(
     //     0xF0002000 as *mut usize,
     //     debug::SUPERVISOR_UART.base,
@@ -76,9 +77,6 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
         )
         .expect("unable to map serial port");
     let system_services = SystemServices::new(init_offset, &args);
-
-    // As a test, map the default UART into our memory space
-    // memory_manager.print();
 
     debug::SUPERVISOR_UART.enable_rx();
     println!("KMAIN: Supervisor mode started...");
@@ -177,7 +175,6 @@ pub fn trap_handler(
     a6: usize,
     a7: usize,
 ) -> ! {
-    use xous::{SysCall, XousResult};
     let call = SysCall::from_args(a0, a1, a2, a3, a4, a5, a6, a7);
     let sc = scause::read();
     let pid = satp::read().asid();
@@ -265,7 +262,7 @@ pub fn trap_handler(
                 PREVIOUS_CONTEXT = Some(**current_context);
             }
         }
-        irq::handle(irqs_pending);
+        irq::handle(irqs_pending).expect("Couldn't handle IRQ");
     }
     loop {}
 }
