@@ -145,7 +145,9 @@ pub fn trap_handler(
 
         let response = match &call {
             SysCall::MapMemory(phys, virt, size, req_flags) => {
-                if size & 4095 != 0 {
+                if (*virt as usize) < mem::USER_AREA_START {
+                    XousResult::Error(XousError::BadAddress)
+                } else if size & 4095 != 0 {
                     // println!("map: bad alignment of size {:08x}", size);
                     XousResult::Error(XousError::BadAlignment)
                 } else {

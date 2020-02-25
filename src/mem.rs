@@ -9,7 +9,7 @@ use vexriscv::register::satp;
 pub const USER_STACK_OFFSET: usize = 0xdfff_fffc;
 const PAGE_TABLE_OFFSET: usize = 0x0040_0000;
 const PAGE_TABLE_ROOT_OFFSET: usize = 0x0080_0000;
-const USER_AREA_START: usize = 0x00c0_0000;
+pub const USER_AREA_START: usize = 0x00c0_0000;
 
 extern "C" {
     fn flush_mmu();
