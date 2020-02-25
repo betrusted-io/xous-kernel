@@ -48,7 +48,13 @@ pub enum SysCall {
     ///                    memory size has been exceeded.
     MapMemory(*mut usize /* phys */, *mut usize /* virt */, usize /* region size */, MemoryFlags /* flags */),
 
+    /// This process wants to give up the remainder of its timeslice.
     Yield,
+
+    /// This process will now wait for an event such as an IRQ or Message.
+    WaitEvent,
+
+    /// Stop running the given process.
     Suspend(XousPid, XousCpuId),
 
     /// Claims an interrupt and unmasks it immediately.  The provided function will
@@ -76,6 +82,7 @@ enum SysCallNumber {
     FreeInterrupt = 6,
     SwitchTo = 7,
     Resume = 8,
+    WaitEvent = 9,
     Invalid,
 }
 
@@ -87,6 +94,7 @@ impl SysCall {
         match *self {
             SysCall::MapMemory(a1, a2, a3, a4) => [SysCallNumber::MapMemory as usize, a1 as usize, a2 as usize, a3, a4.bits(), 0, 0, 0],
             SysCall::Yield => [SysCallNumber::Yield as usize, 0, 0, 0, 0, 0, 0, 0],
+            SysCall::WaitEvent => [SysCallNumber::WaitEvent as usize, 0, 0, 0, 0, 0, 0, 0],
             SysCall::Suspend(a1, a2) => [SysCallNumber::Suspend as usize, a1 as usize, a2 as usize, 0, 0, 0, 0, 0],
             SysCall::ClaimInterrupt(a1, a2, a3) => [SysCallNumber::ClaimInterrupt as usize, a1, a2 as usize, a3 as usize, 0, 0, 0, 0],
             SysCall::FreeInterrupt(a1) => [SysCallNumber::FreeInterrupt as usize, a1, 0, 0, 0, 0, 0, 0],
@@ -107,6 +115,7 @@ impl SysCall {
         Ok(match FromPrimitive::from_usize(a0) {
             Some(SysCallNumber::MapMemory) => SysCall::MapMemory(a1 as *mut usize, a2 as *mut usize, a3, MemoryFlags::from_bits(a4).ok_or(InvalidSyscall {})?),
             Some(SysCallNumber::Yield) => SysCall::Yield,
+            Some(SysCallNumber::WaitEvent) => SysCall::WaitEvent,
             Some(SysCallNumber::Suspend) => SysCall::Suspend(a1 as XousPid, a2),
             Some(SysCallNumber::ClaimInterrupt) => SysCall::ClaimInterrupt(a1, a2 as *mut usize, a3 as *mut usize),
             Some(SysCallNumber::FreeInterrupt) => SysCall::FreeInterrupt(a1),
@@ -121,19 +130,12 @@ impl SysCall {
 #[repr(C)]
 #[derive(Debug, PartialEq)]
 pub enum XousResult {
-    MaxResult1(u32, u32, u32, u32, u32, u32, u32),
-    MaxResult2(u32, u32, u32, u32, u32, u32, u32),
-    MaxResult3(u32, u32, u32, u32, u32, u32, u32),
-    MaxResult4(u32, u32, u32, u32, u32, u32, u32),
-    MaxResult5(u32, u32, u32, u32, u32, u32, u32),
-    MaxResult6(u32, u32, u32, u32, u32, u32, u32),
-    MaxResult7(u32, u32, u32, u32, u32, u32, u32),
-    MaxResult8(u32, u32, u32, u32, u32, u32, u32),
     Ok,
-    Error(XousError),
     MemoryAddress(*mut usize),
     ResumeResult(u32, u32, u32, u32, u32, u32),
     UnknownResult(u32, u32, u32, u32, u32, u32, u32),
+    MaxResult4(u32, u32, u32, u32, u32, u32, u32),
+    Error(XousError),
 }
 
 pub type SyscallResult = Result<XousResult, XousError>;

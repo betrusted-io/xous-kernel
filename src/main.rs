@@ -23,7 +23,7 @@ mod syscalls;
 
 use core::panic::PanicInfo;
 use mem::{MMUFlags, MemoryManager};
-use processtable::{SystemServices, ProcessContext};
+use processtable::{SystemServices, ProcessContext, ProcessState};
 use vexriscv::register::{satp, scause, sepc, sie, sstatus, stval, vsip};
 use xous::*;
 
@@ -99,12 +99,18 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
     print!("}} ");
 
     loop {
+        let mut runnable = false;
         for (pid_idx, process) in system_services.processes.iter().enumerate() {
+            // If this process is owned by the kernel, and if it can be run, run it.
             if process.ppid == 1 && process.runnable() {
+                runnable = true;
                 xous::rsyscall(xous::SysCall::Resume((pid_idx + 1) as XousPid)).expect("couldn't switch to pid");
             }
         }
-        println!("Fell off loop, going again");
+        if ! runnable {
+            println!("No runnable tasks found.  Zzz...");
+            unsafe { vexriscv::asm::wfi() };
+        }
     }
 }
 
@@ -146,7 +152,7 @@ pub fn trap_handler(
         //     "    Syscall {:08x}: {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}",
         //     a0, a1, a2, a3, a4, a5, a6, a7
         // );
-        println!("   Decoded Syscall: {:?}", call);
+        // println!("   Decoded Syscall: {:?}", call);
         let call = call.unwrap_or_else(|_| {
             unsafe { xous_syscall_return_fast(9, 3, 1, 7, 5, 3, 0, 9) };
         });
@@ -213,7 +219,7 @@ pub fn trap_handler(
             //     // )
             // },
             SysCall::Resume(pid) => {
-                XousResult::Error(ss.resume_pid(*pid).expect_err("resume pid failed"))
+                XousResult::Error(ss.resume_pid(*pid, ProcessState::Ready).expect_err("resume pid failed"))
             },
             SysCall::ClaimInterrupt(no, callback, arg) => {
                 irq::interrupt_claim(*no, pid as definitions::XousPid, *callback, *arg)
@@ -223,7 +229,16 @@ pub fn trap_handler(
             SysCall::Yield => {
                 let ppid = ss.get_process(pid).expect("Can't get current process").ppid;
                 assert_ne!(ppid, 0, "no parent process id");
-                ss.resume_pid(ppid).expect("couldn't resume parent process");
+                current_context.registers[10] = 0;
+                ss.resume_pid(ppid, ProcessState::Ready).expect("couldn't resume parent process");
+                XousResult::Error(XousError::ProcessNotFound)
+            }
+            SysCall::WaitEvent => {
+                let process = ss.get_process(pid).expect("Can't get current process");
+                let ppid = process.ppid;
+                assert_ne!(ppid, 0, "no parent process id");
+                current_context.registers[10] = 0;
+                ss.resume_pid(ppid, ProcessState::Sleeping).expect("couldn't resume parent process");
                 XousResult::Error(XousError::ProcessNotFound)
             }
             _ => XousResult::Error(XousError::UnhandledSyscall),
@@ -243,8 +258,8 @@ pub fn trap_handler(
             unsafe { sie::set_sext() };
             unsafe {
                 if let Some(previous_pid) = PREVIOUS_PID.take() {
-                    println!("Resuming previous pid {}", previous_pid);
-                    ss.resume_pid(previous_pid).expect_err("resume pid failed");
+                    // println!("Resuming previous pid {}", previous_pid);
+                    ss.resume_pid(previous_pid, ProcessState::Ready).expect_err("resume pid failed");
                     panic!("dunno what happened");
                 }
             }
@@ -281,11 +296,10 @@ pub fn trap_handler(
         loop {}
     } else {
         let irqs_pending = vsip::read();
-        println!(
-            "Other exception: {}  (irqs_pending: {:08x})",
-            ex, irqs_pending
-        );
-        // println!("Handling IRQ");
+        // println!(
+        //     "Other exception: {}  (irqs_pending: {:08x})",
+        //     ex, irqs_pending
+        // );
         unsafe {
             if PREVIOUS_PID.is_none() {
                 PREVIOUS_PID = Some(pid);
