@@ -27,18 +27,6 @@ use processtable::{SystemServices, ProcessContext, ProcessState};
 use vexriscv::register::{satp, scause, sepc, sie, sstatus, stval, vsip};
 use xous::*;
 
-extern "C" {
-    fn xous_syscall_return_fast(
-        a0: u32,
-        a1: u32,
-        a2: u32,
-        a3: u32,
-        a4: u32,
-        a5: u32,
-        a6: u32,
-        a7: u32,
-    ) -> !;
-}
 extern "Rust" {
     #[allow(unused)]
     fn xous_syscall_return_rust(result: &XousResult) -> !;
@@ -127,7 +115,6 @@ pub fn trap_handler(
     a6: usize,
     a7: usize,
 ) -> ! {
-    let call = SysCall::from_args(a0, a1, a2, a3, a4, a5, a6, a7);
     let sc = scause::read();
 
     // If we were previously in Supervisor mode and we've just tried to write
@@ -141,21 +128,20 @@ pub fn trap_handler(
     let mm = unsafe { MemoryManager::get() };
     let ss = unsafe { SystemServices::get() };
 
-    // println!("Entered trap handler");
     if (sc.bits() == 9) || (sc.bits() == 8) {
         // We got here because of an `ecall` instruction.  When we return, skip
         // past this instruction.
         current_context.sepc += 4;
 
         let is_user = sc.bits() == 8;
+        let call = SysCall::from_args(a0, a1, a2, a3, a4, a5, a6, a7).unwrap_or_else(|_|
+            unsafe { xous_syscall_return_rust(&XousResult::Error(XousError::UnhandledSyscall)) }
+        );
         // println!(
         //     "    Syscall {:08x}: {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}",
         //     a0, a1, a2, a3, a4, a5, a6, a7
         // );
         // println!("   Decoded Syscall: {:?}", call);
-        let call = call.unwrap_or_else(|_| {
-            unsafe { xous_syscall_return_fast(9, 3, 1, 7, 5, 3, 0, 9) };
-        });
 
         let response = match &call {
             SysCall::MapMemory(phys, virt, size, req_flags) => {
@@ -275,7 +261,6 @@ pub fn trap_handler(
             );
             // If the stack seems sane, simply give the user more stack.
             if sp < mem::USER_STACK_OFFSET && mem::USER_STACK_OFFSET - sp <= 262144 {
-                let mm = unsafe { MemoryManager::get() };
                 let new_page = mm.alloc_page(pid).expect("Couldn't allocate new page");
                 // println!(
                 //     "Allocating new physical page {:08x} @ {:08x}",
@@ -296,10 +281,8 @@ pub fn trap_handler(
         loop {}
     } else {
         let irqs_pending = vsip::read();
-        // println!(
-        //     "Other exception: {}  (irqs_pending: {:08x})",
-        //     ex, irqs_pending
-        // );
+        // Safe to access globals since interrupts are disabled
+        // when this function runs.
         unsafe {
             if PREVIOUS_PID.is_none() {
                 PREVIOUS_PID = Some(pid);
