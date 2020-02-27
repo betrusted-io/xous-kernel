@@ -1,11 +1,26 @@
 # Xous Kernel
 
-This contains the core kernel for Xous.  It is implemented as
-a library that you include with your `pid 0` program.
+This contains the core kernel for Xous.  It requires a stage 1 loader in
+order to start up, as it assumes the system is already running in
+Supervisor mode.
 
 ## Building
 
-`cargo build`
+To build the kernel, you will need a riscv32 target for Rust.  Possible
+targets include `riscv32i-unknown-none-elf`, `riscv32imac-unknown-none-elf`,
+or `riscv32imac-unknown-xous-elf`.
+
+1. Decide what target you want.  For simple, embedded systems this could
+   be `riscv32i-unknown-none-elf`, and for more complex systems with
+   compressed instructions you could use `riscv32imac-unknown-none-elf`.
+2. Get Rust.  Go to https://rustup.rs/ and follow its instructions.
+3. Install the proper toolchain: `rustup target add ${target_arch}`
+4. Build the kernel: `cargo build --release --target ${target_arch}`
+
+## Using
+
+To use the kernel, you must package it up into an arguments binary with
+`xous-tools`.
 
 ## Testing
 
