@@ -1,5 +1,4 @@
 use core::fmt::{Error, Write};
-pub use debug_print_hardware::SUPERVISOR_UART;
 #[macro_use]
 #[cfg(all(not(test), feature = "debug-print"))]
 pub mod debug_print_hardware {
@@ -17,6 +16,8 @@ pub mod debug_print_hardware {
         });
     }
 }
+#[cfg(all(not(test), feature = "debug-print"))]
+pub use crate::debug::debug_print_hardware::SUPERVISOR_UART;
 
 #[cfg(all(not(test), not(feature = "debug-print")))]
 #[macro_export]
@@ -46,6 +47,7 @@ pub struct Uart {
 }
 
 impl Uart {
+    #[allow(dead_code)]
     pub fn enable_rx(self) {
         unsafe {
             self.base
@@ -81,6 +83,7 @@ impl Uart {
     }
 }
 
+#[allow(dead_code)]
 pub fn irq(_irq_number: usize, _arg: usize) {
     println!(
         "Interrupt {}: Key pressed: {}",

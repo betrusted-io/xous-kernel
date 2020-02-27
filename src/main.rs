@@ -25,7 +25,7 @@ mod processtable;
 mod syscalls;
 
 use mem::{MMUFlags, MemoryManager};
-use processtable::{SystemServices, ProcessContext, ProcessState};
+use processtable::{ProcessContext, ProcessState, SystemServices};
 use vexriscv::register::{satp, scause, sepc, sie, sstatus, stval, vsip};
 use xous::*;
 
@@ -62,7 +62,8 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
     //     xous::MemoryFlags::R | xous::MemoryFlags::W,
     // ))
     // .unwrap();
-    if cfg!(feature = "debug-print") {
+    #[cfg(feature = "debug-print")]
+    {
         _memory_manager
             .map_page(
                 0xF0002000 as *mut usize,
@@ -71,10 +72,10 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
             )
             .expect("unable to map serial port");
         println!("KMAIN: Supervisor mode started...");
+        debug::SUPERVISOR_UART.enable_rx();
     }
     let system_services = SystemServices::new(init_offset, &args);
 
-    debug::SUPERVISOR_UART.enable_rx();
     unsafe {
         sstatus::set_sie();
         sie::set_ssoft();
@@ -85,6 +86,7 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
         println!("    {}", _arg);
     }
 
+    #[cfg(feature = "debug-print")]
     xous::rsyscall(xous::SysCall::ClaimInterrupt(
         3,
         debug::irq as *mut usize,
@@ -99,10 +101,11 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
             // If this process is owned by the kernel, and if it can be run, run it.
             if process.ppid == 1 && process.runnable() {
                 runnable = true;
-                xous::rsyscall(xous::SysCall::Resume((pid_idx + 1) as XousPid)).expect("couldn't switch to pid");
+                xous::rsyscall(xous::SysCall::Resume((pid_idx + 1) as XousPid))
+                    .expect("couldn't switch to pid");
             }
         }
-        if ! runnable {
+        if !runnable {
             println!("No runnable tasks found.  Zzz...");
             unsafe { vexriscv::asm::wfi() };
         }
@@ -141,9 +144,9 @@ pub fn trap_handler(
         current_context.sepc += 4;
 
         let is_user = sc.bits() == 8;
-        let call = SysCall::from_args(a0, a1, a2, a3, a4, a5, a6, a7).unwrap_or_else(|_|
-            unsafe { xous_syscall_return_rust(&XousResult::Error(XousError::UnhandledSyscall)) }
-        );
+        let call = SysCall::from_args(a0, a1, a2, a3, a4, a5, a6, a7).unwrap_or_else(|_| unsafe {
+            xous_syscall_return_rust(&XousResult::Error(XousError::UnhandledSyscall))
+        });
         // println!(
         //     "    Syscall {:08x}: {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}",
         //     a0, a1, a2, a3, a4, a5, a6, a7
@@ -204,7 +207,7 @@ pub fn trap_handler(
                     }
                     result
                 }
-            },
+            }
             // SysCall::SwitchTo(pid, pc, sp) => unsafe {
             //     unimplemented!();
             //     // let ss = SystemServices::get();
@@ -213,19 +216,21 @@ pub fn trap_handler(
             //     //         .expect_err("context switch failed"),
             //     // )
             // },
-            SysCall::Resume(pid) => {
-                XousResult::Error(ss.resume_pid(*pid, ProcessState::Ready).expect_err("resume pid failed"))
-            },
+            SysCall::Resume(pid) => XousResult::Error(
+                ss.resume_pid(*pid, ProcessState::Ready)
+                    .expect_err("resume pid failed"),
+            ),
             SysCall::ClaimInterrupt(no, callback, arg) => {
                 irq::interrupt_claim(*no, pid as definitions::XousPid, *callback, *arg)
                     .map(|_| XousResult::Ok)
                     .unwrap_or_else(|e| XousResult::Error(e))
-            },
+            }
             SysCall::Yield => {
                 let ppid = ss.get_process(pid).expect("Can't get current process").ppid;
                 assert_ne!(ppid, 0, "no parent process id");
                 current_context.registers[10] = 0;
-                ss.resume_pid(ppid, ProcessState::Ready).expect("couldn't resume parent process");
+                ss.resume_pid(ppid, ProcessState::Ready)
+                    .expect("couldn't resume parent process");
                 XousResult::Error(XousError::ProcessNotFound)
             }
             SysCall::WaitEvent => {
@@ -233,7 +238,8 @@ pub fn trap_handler(
                 let ppid = process.ppid;
                 assert_ne!(ppid, 0, "no parent process id");
                 current_context.registers[10] = 0;
-                ss.resume_pid(ppid, ProcessState::Sleeping).expect("couldn't resume parent process");
+                ss.resume_pid(ppid, ProcessState::Sleeping)
+                    .expect("couldn't resume parent process");
                 XousResult::Error(XousError::ProcessNotFound)
             }
             _ => XousResult::Error(XousError::UnhandledSyscall),
@@ -254,7 +260,8 @@ pub fn trap_handler(
             unsafe {
                 if let Some(previous_pid) = PREVIOUS_PID.take() {
                     // println!("Resuming previous pid {}", previous_pid);
-                    ss.resume_pid(previous_pid, ProcessState::Ready).expect_err("resume pid failed");
+                    ss.resume_pid(previous_pid, ProcessState::Ready)
+                        .expect_err("resume pid failed");
                     panic!("dunno what happened");
                 }
             }
