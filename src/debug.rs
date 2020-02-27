@@ -1,11 +1,29 @@
 use core::fmt::{Error, Write};
+pub use debug_print_hardware::SUPERVISOR_UART;
+#[macro_use]
+#[cfg(all(not(test), feature = "debug-print"))]
+pub mod debug_print_hardware {
+    use crate::debug::*;
+    pub const SUPERVISOR_UART: Uart = Uart {
+        base: 0x001f_0000 as *mut usize,
+    };
 
+    #[macro_export]
+    macro_rules! print
+    {
+        ($($args:tt)+) => ({
+                use core::fmt::Write;
+                let _ = write!(crate::debug::debug_print_hardware::SUPERVISOR_UART, $($args)+);
+        });
+    }
+}
+
+#[cfg(all(not(test), not(feature = "debug-print")))]
 #[macro_export]
 macro_rules! print
 {
 	($($args:tt)+) => ({
-			use core::fmt::Write;
-			let _ = write!(crate::debug::SUPERVISOR_UART, $($args)+);
+        ()
 	});
 }
 
@@ -27,10 +45,6 @@ pub struct Uart {
     pub base: *mut usize,
 }
 
-pub const SUPERVISOR_UART: Uart = Uart {
-    base: 0x001f_0000 as *mut usize,
-};
-
 impl Uart {
     pub fn enable_rx(self) {
         unsafe {
@@ -50,6 +64,7 @@ impl Uart {
         };
     }
 
+    #[allow(dead_code)]
     pub fn getc(&self) -> Option<u8> {
         unsafe {
             // If EV_PENDING_RX is 1, return the pending character.
@@ -66,10 +81,10 @@ impl Uart {
     }
 }
 
-pub fn irq(irq_number: usize, _arg: usize) {
+pub fn irq(_irq_number: usize, _arg: usize) {
     println!(
         "Interrupt {}: Key pressed: {}",
-        irq_number,
+        _irq_number,
         SUPERVISOR_UART.getc().expect("no character queued despite interrupt") as char
     );
 }

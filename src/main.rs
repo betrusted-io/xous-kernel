@@ -1,5 +1,5 @@
-#![no_std]
-#![no_main]
+#![cfg_attr(not(test), no_main)]
+#![cfg_attr(not(test), no_std)]
 
 extern crate vexriscv;
 
@@ -11,6 +11,9 @@ extern crate xous;
 #[macro_use]
 mod debug;
 
+#[cfg(test)]
+mod test;
+
 mod start;
 
 #[macro_use]
@@ -21,7 +24,6 @@ mod mem;
 mod processtable;
 mod syscalls;
 
-use core::panic::PanicInfo;
 use mem::{MMUFlags, MemoryManager};
 use processtable::{SystemServices, ProcessContext, ProcessState};
 use vexriscv::register::{satp, scause, sepc, sie, sstatus, stval, vsip};
@@ -35,10 +37,13 @@ extern "Rust" {
     fn xous_syscall_resume_context(context: ProcessContext) -> !;
 }
 
+#[cfg(not(test))]
+use core::panic::PanicInfo;
+#[cfg(not(test))]
 #[panic_handler]
-fn handle_panic(arg: &PanicInfo) -> ! {
+fn handle_panic(_arg: &PanicInfo) -> ! {
     println!("PANIC in PID {}!", satp::read().asid());
-    println!("Details: {:?}", arg);
+    println!("Details: {:?}", _arg);
     loop {}
 }
 
@@ -57,25 +62,27 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
     //     xous::MemoryFlags::R | xous::MemoryFlags::W,
     // ))
     // .unwrap();
-    _memory_manager
-        .map_page(
-            0xF0002000 as *mut usize,
-            ((debug::SUPERVISOR_UART.base as u32) & !4095) as *mut usize,
-            MMUFlags::R | MMUFlags::W,
-        )
-        .expect("unable to map serial port");
+    if cfg!(feature = "debug-print") {
+        _memory_manager
+            .map_page(
+                0xF0002000 as *mut usize,
+                ((debug::SUPERVISOR_UART.base as u32) & !4095) as *mut usize,
+                MMUFlags::R | MMUFlags::W,
+            )
+            .expect("unable to map serial port");
+        println!("KMAIN: Supervisor mode started...");
+    }
     let system_services = SystemServices::new(init_offset, &args);
 
     debug::SUPERVISOR_UART.enable_rx();
-    println!("KMAIN: Supervisor mode started...");
     unsafe {
         sstatus::set_sie();
         sie::set_ssoft();
         sie::set_sext();
     }
     println!("Kernel arguments:");
-    for arg in args.iter() {
-        println!("    {}", arg);
+    for _arg in args.iter() {
+        println!("    {}", _arg);
     }
 
     xous::rsyscall(xous::SysCall::ClaimInterrupt(

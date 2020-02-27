@@ -11,6 +11,9 @@ r0 = "0.2.2"
 vexriscv = "0.0.2"
 xous = { path = "xous-rs" }
 
+[features]
+debug-print = []
+
 [profile.release]
 codegen-units = 1 # 1 better optimizations
 debug = true # symbols are nice and they don't increase the size on Flash

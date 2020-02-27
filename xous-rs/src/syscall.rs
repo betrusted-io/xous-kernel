@@ -132,16 +132,16 @@ impl SysCall {
 pub enum XousResult {
     Ok,
     MemoryAddress(*mut usize),
-    ResumeResult(u32, u32, u32, u32, u32, u32),
-    UnknownResult(u32, u32, u32, u32, u32, u32, u32),
-    MaxResult4(u32, u32, u32, u32, u32, u32, u32),
+    ResumeResult(usize, usize, usize, usize, usize, usize),
+    UnknownResult(usize, usize, usize, usize, usize, usize, usize),
+    MaxResult4(usize, usize, usize, usize, usize, usize, usize),
     Error(XousError),
 }
 
 pub type SyscallResult = Result<XousResult, XousError>;
 
 extern "Rust" {
-    fn _xous_syscall_rust(nr: u32, a1: u32, a2: u32, a3: u32, a4: u32, a5: u32, a6: u32, a7: u32, ret: &mut XousResult);
+    fn _xous_syscall_rust(nr: usize, a1: usize, a2: usize, a3: usize, a4: usize, a5: usize, a6: usize, a7: usize, ret: &mut XousResult);
     fn _xous_syscall(nr: usize, a1: usize, a2: usize, a3: usize, a4: usize, a5: usize, a6: usize, a7: usize, ret: &mut XousResult);
 }
 
@@ -161,7 +161,7 @@ pub fn rsyscall(call: SysCall) -> SyscallResult {
 pub fn dangerous_syscall(call: SysCall) -> SyscallResult {
     use core::mem::{transmute, MaybeUninit};
     let mut ret = unsafe { MaybeUninit::uninit().assume_init() };
-    let presto = unsafe { transmute::<_, (u32, u32, u32, u32, u32, u32, u32, u32)>(call) };
+    let presto = unsafe { transmute::<_, (usize, usize, usize, usize, usize, usize, usize, usize)>(call) };
     unsafe { _xous_syscall_rust(presto.0, presto.1, presto.2, presto.3, presto.4, presto.5, presto.6, presto.7, &mut ret) };
     match ret {
         XousResult::Error(e) => Err(e),
