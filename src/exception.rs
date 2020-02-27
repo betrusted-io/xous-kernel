@@ -6,85 +6,85 @@ pub enum RiscvException {
     NoException,
 
     /// 1 0
-    UserSoftwareInterrupt(usize /* mepc */),
+    UserSoftwareInterrupt(usize /* epc */),
 
     /// 1 1
-    SupervisorSoftwareInterrupt(usize /* mepc */),
+    SupervisorSoftwareInterrupt(usize /* epc */),
 
     // [reserved]
     /// 1 3
-    MachineSoftwareInterrupt(usize /* mepc */),
+    MachineSoftwareInterrupt(usize /* epc */),
 
     /// 1 4
-    UserTimerInterrupt(usize /* mepc */),
+    UserTimerInterrupt(usize /* epc */),
 
     /// 1 5
-    SupervisorTimerInterrupt(usize /* mepc */),
+    SupervisorTimerInterrupt(usize /* epc */),
 
     // [reserved]
     /// 1 7
-    MachineTimerInterrupt(usize /* mepc */),
+    MachineTimerInterrupt(usize /* epc */),
 
     /// 1 8
-    UserExternalInterrupt(usize /* mepc */),
+    UserExternalInterrupt(usize /* epc */),
 
     /// 1 9
-    SupervisorExternalInterrupt(usize /* mepc */),
+    SupervisorExternalInterrupt(usize /* epc */),
 
     // [reserved]
     /// 1 11
-    MachineExternalInterrupt(usize /* mepc */),
+    MachineExternalInterrupt(usize /* epc */),
 
-    ReservedInterrupt(usize /* unknown cause number */, usize /* mepc */),
+    ReservedInterrupt(usize /* unknown cause number */, usize /* epc */),
 
     /// 0 0
-    InstructionAddressMisaligned(usize /* mepc */, usize /* target address */),
+    InstructionAddressMisaligned(usize /* epc */, usize /* target address */),
 
     /// 0 1
-    InstructionAccessFault(usize /* mepc */, usize /* target address */),
+    InstructionAccessFault(usize /* epc */, usize /* target address */),
 
     /// 0 2
-    IllegalInstruction(usize /* mepc */, usize /* instruction value */),
+    IllegalInstruction(usize /* epc */, usize /* instruction value */),
 
     /// 0 3
-    Breakpoint(usize /* mepc */),
+    Breakpoint(usize /* epc */),
 
     /// 0 4
-    LoadAddressMisaligned(usize /* mepc */, usize /* target address */),
+    LoadAddressMisaligned(usize /* epc */, usize /* target address */),
 
     /// 0 5
-    LoadAccessFault(usize /* mepc */, usize /* target address */),
+    LoadAccessFault(usize /* epc */, usize /* target address */),
 
     /// 0 6
-    StoreAddressMisaligned(usize /* mepc */, usize /* target address */),
+    StoreAddressMisaligned(usize /* epc */, usize /* target address */),
 
     /// 0 7
-    StoreAccessFault(usize /* mepc */, usize /* target address */),
+    StoreAccessFault(usize /* epc */, usize /* target address */),
 
     /// 0 8
-    CallFromUMode(usize /* mepc */),
+    CallFromUMode(usize /* epc */),
 
     /// 0 9
-    CallFromSMode(usize /* mepc */),
+    CallFromSMode(usize /* epc */),
 
     // [reserved]
     /// 0 11
-    CallFromMMode(usize /* mepc */),
+    CallFromMMode(usize /* epc */),
 
     /// 0 12
-    InstructionPageFault(usize /* mepc */, usize /* target address */),
+    InstructionPageFault(usize /* epc */, usize /* target address */),
 
     /// 0 13
-    LoadPageFault(usize /* mepc */, usize /* target address */),
+    LoadPageFault(usize /* epc */, usize /* target address */),
 
     // [reserved]
     /// 0 15
-    StorePageFault(usize /* mepc */, usize /* target address */),
+    StorePageFault(usize /* epc */, usize /* target address */),
 
     ReservedFault(
         usize, /* unknown cause number */
-        usize, /* mepc */
-        usize, /* mtval */
+        usize, /* epc */
+        usize, /* tval */
     ),
 }
 
@@ -115,103 +115,103 @@ impl fmt::Display for RiscvException {
                 write!(f, "Reserved interrupt 0x{:08x} at 0x{:08x}", code, epc)
             }
 
-            InstructionAddressMisaligned(epc, mtval) => write!(
+            InstructionAddressMisaligned(epc, tval) => write!(
                 f,
                 "Misaligned address instruction 0x{:08x} at 0x{:08x}",
-                mtval, epc
+                tval, epc
             ),
-            InstructionAccessFault(epc, mtval) => write!(
+            InstructionAccessFault(epc, tval) => write!(
                 f,
                 "Instruction access fault to 0x{:08x} at 0x{:08x}",
-                mtval, epc
+                tval, epc
             ),
-            IllegalInstruction(epc, mtval) => {
-                write!(f, "Illegal instruction 0x{:08x} at 0x{:08x}", mtval, epc)
+            IllegalInstruction(epc, tval) => {
+                write!(f, "Illegal instruction 0x{:08x} at 0x{:08x}", tval, epc)
             }
             Breakpoint(epc) => write!(f, "Breakpoint at 0x{:08x}", epc),
-            LoadAddressMisaligned(epc, mtval) => write!(
+            LoadAddressMisaligned(epc, tval) => write!(
                 f,
                 "Misaligned load address of 0x{:08x} at 0x{:08x}",
-                mtval, epc
+                tval, epc
             ),
-            LoadAccessFault(epc, mtval) => {
-                write!(f, "Load access fault from 0x{:08x} at 0x{:08x}", mtval, epc)
+            LoadAccessFault(epc, tval) => {
+                write!(f, "Load access fault from 0x{:08x} at 0x{:08x}", tval, epc)
             }
-            StoreAddressMisaligned(epc, mtval) => write!(
+            StoreAddressMisaligned(epc, tval) => write!(
                 f,
                 "Misaligned store address of 0x{:08x} at 0x{:08x}",
-                mtval, epc
+                tval, epc
             ),
-            StoreAccessFault(epc, mtval) => {
-                write!(f, "Store access fault to 0x{:08x} at 0x{:08x}", mtval, epc)
+            StoreAccessFault(epc, tval) => {
+                write!(f, "Store access fault to 0x{:08x} at 0x{:08x}", tval, epc)
             }
             CallFromUMode(epc) => write!(f, "Call from User mode at 0x{:08x}", epc),
             CallFromSMode(epc) => write!(f, "Call from Supervisor mode at 0x{:08x}", epc),
             // --reserved--
             CallFromMMode(epc) => write!(f, "Call from Machine mode at 0x{:08x}", epc),
-            InstructionPageFault(epc, mtval) => write!(
+            InstructionPageFault(epc, tval) => write!(
                 f,
                 "Instruction page fault of 0x{:08x} at 0x{:08x}",
-                mtval, epc
+                tval, epc
             ),
-            LoadPageFault(epc, mtval) => {
-                write!(f, "Load page fault of 0x{:08x} at 0x{:08x}", mtval, epc)
+            LoadPageFault(epc, tval) => {
+                write!(f, "Load page fault of 0x{:08x} at 0x{:08x}", tval, epc)
             }
             // --reserved--
-            StorePageFault(epc, mtval) => {
-                write!(f, "Store page fault of 0x{:08x} at 0x{:08x}", mtval, epc)
+            StorePageFault(epc, tval) => {
+                write!(f, "Store page fault of 0x{:08x} at 0x{:08x}", tval, epc)
             }
-            ReservedFault(code, epc, mtval) => write!(
+            ReservedFault(code, epc, tval) => write!(
                 f,
                 "Reserved interrupt 0x{:08x} with cause 0x{:08x} at 0x{:08x}",
-                code, mtval, epc
+                code, tval, epc
             ),
         }
     }
 }
 
 impl RiscvException {
-    pub fn from_regs(mcause: usize, mepc: usize, mtval: usize) -> RiscvException {
+    pub fn from_regs(cause: usize, epc: usize, tval: usize) -> RiscvException {
         use RiscvException::*;
 
-        if mepc == 0 && mtval == 0 {
+        if epc == 0 && tval == 0 {
             return NoException;
         }
 
-        match mcause {
-            0x80000000 => UserSoftwareInterrupt(mepc),
-            0x80000001 => SupervisorSoftwareInterrupt(mepc),
+        match cause {
+            0x80000000 => UserSoftwareInterrupt(epc),
+            0x80000001 => SupervisorSoftwareInterrupt(epc),
             // --reserved--
-            0x80000003 => MachineSoftwareInterrupt(mepc),
-            0x80000004 => UserTimerInterrupt(mepc),
-            0x80000005 => SupervisorTimerInterrupt(mepc),
+            0x80000003 => MachineSoftwareInterrupt(epc),
+            0x80000004 => UserTimerInterrupt(epc),
+            0x80000005 => SupervisorTimerInterrupt(epc),
             // --reserved--
-            0x80000007 => MachineTimerInterrupt(mepc),
-            0x80000008 => UserExternalInterrupt(mepc),
-            0x80000009 => SupervisorExternalInterrupt(mepc),
+            0x80000007 => MachineTimerInterrupt(epc),
+            0x80000008 => UserExternalInterrupt(epc),
+            0x80000009 => SupervisorExternalInterrupt(epc),
             // --reserved--
-            0x8000000b => MachineExternalInterrupt(mepc),
+            0x8000000b => MachineExternalInterrupt(epc),
 
-            0 => InstructionAddressMisaligned(mepc, mtval),
-            1 => InstructionAccessFault(mepc, mtval),
-            2 => IllegalInstruction(mepc, mtval),
-            3 => Breakpoint(mepc),
-            4 => LoadAddressMisaligned(mepc, mtval),
-            5 => LoadAccessFault(mepc, mtval),
-            6 => StoreAddressMisaligned(mepc, mtval),
-            7 => StoreAccessFault(mepc, mtval),
-            8 => CallFromUMode(mepc),
-            9 => CallFromSMode(mepc),
+            0 => InstructionAddressMisaligned(epc, tval),
+            1 => InstructionAccessFault(epc, tval),
+            2 => IllegalInstruction(epc, tval),
+            3 => Breakpoint(epc),
+            4 => LoadAddressMisaligned(epc, tval),
+            5 => LoadAccessFault(epc, tval),
+            6 => StoreAddressMisaligned(epc, tval),
+            7 => StoreAccessFault(epc, tval),
+            8 => CallFromUMode(epc),
+            9 => CallFromSMode(epc),
             // --reserved--
-            11 => CallFromMMode(mepc),
-            12 => InstructionPageFault(mepc, mtval),
-            13 => LoadPageFault(mepc, mtval),
+            11 => CallFromMMode(epc),
+            12 => InstructionPageFault(epc, tval),
+            13 => LoadPageFault(epc, tval),
             // --reserved--
-            15 => StorePageFault(mepc, mtval),
-            x @ 10 | x @ 14 | x @ 16..=0x7fffffff => ReservedFault(x, mepc, mtval),
+            15 => StorePageFault(epc, tval),
+            x @ 10 | x @ 14 | x @ 16..=0x7fffffff => ReservedFault(x, epc, tval),
 
             x => {
-                ReservedInterrupt(x & 0x7fffffff, mepc)
+                ReservedInterrupt(x & 0x7fffffff, epc)
             }
         }
     }
