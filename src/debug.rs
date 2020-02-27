@@ -21,11 +21,10 @@ pub use crate::debug::debug_print_hardware::SUPERVISOR_UART;
 
 #[cfg(all(not(test), not(feature = "debug-print")))]
 #[macro_export]
-macro_rules! print
-{
-	($($args:tt)+) => ({
+macro_rules! print {
+    ($($args:tt)+) => {{
         ()
-	});
+    }};
 }
 
 #[macro_export]
@@ -88,7 +87,9 @@ pub fn irq(_irq_number: usize, _arg: usize) {
     println!(
         "Interrupt {}: Key pressed: {}",
         _irq_number,
-        SUPERVISOR_UART.getc().expect("no character queued despite interrupt") as char
+        SUPERVISOR_UART
+            .getc()
+            .expect("no character queued despite interrupt") as char
     );
 }
 
