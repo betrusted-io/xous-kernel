@@ -1,6 +1,6 @@
 use crate::definitions::{XousError, XousPid};
 use crate::processtable::SystemServices;
-use vexriscv::register::{sstatus, vsim, sie};
+use crate::arch;
 
 static mut IRQ_HANDLERS: [Option<(XousPid, *mut usize, *mut usize)>; 32] = [None; 32];
 
@@ -16,18 +16,15 @@ pub fn handle(irqs_pending: usize) -> Result<(), XousError> {
             if irqs_pending & (1 << irq_no) != 0 {
                 if let Some((pid, f, arg)) = IRQ_HANDLERS[irq_no] {
                     let ss = SystemServices::get();
-                    // Mask the IRQ and call the function
-                    // vsim::write(vsim::read() | (1 << irq_no));
-                    sie::clear_sext();
+                    // Disable all other IRQs and redirect into userspace
+                    arch::irq::disable_all_irqs();
                     ss.make_callback_to(pid, f, irq_no, arg)?;
-                    // Call the IRQ handler
-                    // println!("Calling handler");
                 } else {
                     // If there is no handler, mask this interrupt
                     // to prevent an IRQ storm.  This is considered
                     // an error.
                     // println!("Shutting it up");
-                    vsim::write(vsim::read() | (1 << irq_no));
+                    arch::irq::disable_irq(irq_no);
                 }
             }
         }
@@ -39,19 +36,17 @@ pub fn interrupt_claim(irq: usize, pid: XousPid, f: *mut usize, arg: *mut usize)
     // Unsafe is required since we're accessing a static mut array.
     // However, we disable interrupts to prevent contention on this array.
     unsafe {
-        sstatus::clear_sie();
+        arch::irq::enable_all_irqs();
         let result = if irq > IRQ_HANDLERS.len() {
             Err(XousError::InterruptNotFound)
         } else if IRQ_HANDLERS[irq].is_some() {
             Err(XousError::InterruptInUse)
         } else {
             IRQ_HANDLERS[irq] = Some((pid, f, arg));
-            // Note that the vexriscv "IRQ Mask" register is inverse-logic --
-            // that is, setting a bit in the "mask" register unmasks (i.e. enables) it.
-            vsim::write(vsim::read() | (1 << irq));
+            arch::irq::enable_irq(irq);
             Ok(())
         };
-        sstatus::set_sie();
+        arch::irq::enable_all_irqs();
         result
     }
 }

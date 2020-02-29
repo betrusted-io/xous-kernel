@@ -145,7 +145,6 @@ extern "Rust" {
     fn _xous_syscall(nr: usize, a1: usize, a2: usize, a3: usize, a4: usize, a5: usize, a6: usize, a7: usize, ret: &mut XousResult);
 }
 
-
 pub fn rsyscall(call: SysCall) -> SyscallResult {
     use core::mem::{MaybeUninit};
     let mut ret = unsafe { MaybeUninit::uninit().assume_init() };
