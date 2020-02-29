@@ -18,7 +18,6 @@ mod arch;
 
 #[macro_use]
 mod args;
-mod exception;
 mod irq;
 mod mem;
 mod processtable;

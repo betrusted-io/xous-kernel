@@ -227,10 +227,10 @@ pub fn handle(call: SysCall) -> XousResult {
                 // println!("map: bad alignment of size {:08x}", size);
                 XousResult::Error(XousError::BadAlignment)
             } else {
-                println!(
-                    "Mapping {:08x} -> {:08x} ({} bytes, flags: {:?})",
-                    phys as u32, virt as u32, size, req_flags
-                );
+                // println!(
+                //     "Mapping {:08x} -> {:08x} ({} bytes, flags: {:?})",
+                //     phys as u32, virt as u32, size, req_flags
+                // );
                 let mut last_mapped = 0;
                 let mut result = XousResult::Ok;
                 for offset in (0..size).step_by(4096) {

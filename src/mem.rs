@@ -213,16 +213,11 @@ impl MemoryManager {
         let pid = crate::arch::current_pid();
 
         self.claim_page(phys, pid)?;
-        if pid != 1 {
-            println!("Mapping page inner...");
-        }
         match crate::arch::mem::map_page_inner(self, pid, phys as usize, virt as usize, flags) {
             Ok(_) => {
-                println!("Good result!");
                 MemoryAddress::new(virt as usize).ok_or(XousError::BadAddress)
             }
             Err(e) => {
-                println!("Failure -- releasing page");
                 self.release_page(phys, pid)?;
                 Err(e)
             }

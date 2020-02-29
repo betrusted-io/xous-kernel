@@ -76,7 +76,7 @@ pub fn trap_handler(
     }
 
     let pid = crate::arch::current_pid();
-    use crate::exception::RiscvException;
+    use crate::arch::exception::RiscvException;
     let ex = RiscvException::from_regs(sc.bits(), sepc::read(), stval::read());
     if sc.is_exception() {
         if let RiscvException::InstructionPageFault(RETURN_FROM_ISR, _offset) = ex {

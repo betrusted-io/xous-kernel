@@ -5,6 +5,7 @@ pub mod irq;
 pub mod mem;
 mod start;
 pub mod syscall;
+pub mod exception;
 
 pub fn current_pid() -> XousPid {
     satp::read().asid() as XousPid
