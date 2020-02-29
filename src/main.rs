@@ -86,7 +86,7 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
             // If this process is owned by the kernel, and if it can be run, run it.
             if process.ppid == 1 && process.runnable() {
                 runnable = true;
-                xous::rsyscall(xous::SysCall::Resume((pid_idx + 1) as XousPid))
+                xous::rsyscall(xous::SysCall::SwitchTo((pid_idx + 1) as XousPid, 0 as *const usize))
                     .expect("couldn't switch to pid");
             }
         }

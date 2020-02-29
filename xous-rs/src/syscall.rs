@@ -48,7 +48,8 @@ pub enum SysCall {
     ///                    memory size has been exceeded.
     MapMemory(*mut usize /* phys */, *mut usize /* virt */, usize /* region size */, MemoryFlags /* flags */),
 
-    /// This process wants to give up the remainder of its timeslice.
+    /// Pauses execution of the current thread and returns execution to the parent
+    /// process.  This may return at any time in the future, including immediately.
     Yield,
 
     /// This process will now wait for an event such as an IRQ or Message.
@@ -67,10 +68,69 @@ pub enum SysCall {
     /// * **InterruptInUse**: The specified interrupt has already been claimed
     ClaimInterrupt(usize /* IRQ number */, *mut usize /* function pointer */, *mut usize /* argument */),
 
+    /// Returns the interrupt back to the operating system and masks it again.
+    /// This function is implicitly called when a process exits.
+    ///
+    /// # Errors
+    ///
+    /// * **InterruptNotFound**: The specified interrupt doesn't exist, or isn't assigned
+    ///                          to this process.
     FreeInterrupt(usize /* IRQ number */),
+
+    /// Resumes a process using the given context.  A parent could use
+    /// this function to implement multi-threading inside a child process, or
+    /// to create a task switcher.
+    ///
+    /// To resume a process exactly where it left off, set `stack_pointer` to `None`.
+    /// This would be done in a very simple system that has no threads.
+    ///
+    /// By default, at most three context switches can be made before the quantum
+    /// expires.  To enable more, pass `additional_contexts`.
+    ///
+    /// If no more contexts are available when one is required, then the child
+    /// automatically relinquishes its quantum.
+    ///
+    /// # Returns
+    ///
+    /// When this function returns, it provides a list of the processes and
+    /// stack pointers that are ready to be run.  Three can fit as return values,
+    /// and additional context switches will be supplied in the slice of context
+    /// switches, if one is provided.
+    ///
+    /// # Examples
+    ///
+    /// If a process called `yield()`, or if its quantum expired normally, then
+    /// a single context is returned: The target thread, and its stack pointer.
+    ///
+    /// If the child process called `client_send()` and ended up blocking due to
+    /// the server not being ready, then this would return no context switches.
+    /// This thread or process should not be scheduled to run.
+    ///
+    /// If the child called `client_send()` and the server was ready, then the
+    /// server process would be run immediately.  If the child process' quantum
+    /// expired while the server was running, then this function would return
+    /// a single context containing the PID of the server, and the stack pointer.
+    ///
+    /// If the child called `client_send()` and the server was ready, then the
+    /// server process would be run immediately.  If the server then finishes,
+    /// execution flow is returned to the child process.  If the quantum then
+    /// expires, this would return two contexts: the server's PID and its stack
+    /// pointer when it called `client_reply()`, and the child's PID with its
+    /// current stack pointer.
+    ///
+    /// If the server in turn called another server, and both servers ended up
+    /// returning to the child before the quantum expired, then there would be
+    /// three contexts on the stack.
+    ///
+    /// # Errors
+    ///
+    /// * **ProcessNotFound**: The requested process does not exist
+    /// * **ProcessNotChild**: The given process was not a child process, and
+    ///                        therefore couldn't be resumed.
+    /// * **ProcessTerminated**: The process has crashed.
+    SwitchTo(XousPid, *const usize /* context page */),
+
     Invalid(usize, usize, usize, usize, usize, usize, usize),
-    SwitchTo(XousPid, *const usize /* pc */, *mut usize /* sp */),
-    Resume(XousPid),
 }
 
 #[derive(FromPrimitive)]
@@ -81,7 +141,6 @@ enum SysCallNumber {
     ClaimInterrupt = 5,
     FreeInterrupt = 6,
     SwitchTo = 7,
-    Resume = 8,
     WaitEvent = 9,
     Invalid,
 }
@@ -98,18 +157,9 @@ impl SysCall {
             SysCall::Suspend(a1, a2) => [SysCallNumber::Suspend as usize, a1 as usize, a2 as usize, 0, 0, 0, 0, 0],
             SysCall::ClaimInterrupt(a1, a2, a3) => [SysCallNumber::ClaimInterrupt as usize, a1, a2 as usize, a3 as usize, 0, 0, 0, 0],
             SysCall::FreeInterrupt(a1) => [SysCallNumber::FreeInterrupt as usize, a1, 0, 0, 0, 0, 0, 0],
-            SysCall::SwitchTo(a1, a2, a3) => [SysCallNumber::SwitchTo as usize, a1 as usize, a2 as usize, a3 as usize, 0, 0, 0, 0],
-            SysCall::Resume(a1) => [SysCallNumber::Resume as usize, a1 as usize, 0, 0, 0, 0, 0, 0],
+            SysCall::SwitchTo(a1, a2) => [SysCallNumber::SwitchTo as usize, a1 as usize, a2 as usize, 0, 0, 0, 0, 0],
             SysCall::Invalid(a1, a2, a3, a4, a5, a6, a7) => [SysCallNumber::Invalid as usize, a1, a2, a3, a4, a5, a6, a7],
         }
-        // match *self {
-        //     MaxResult1(a1, a2, a3, a4, a5, a6, a7) => [0, a1, a2, a3, a4, a5, a6, a7],
-        //     MaxResult2(a1, a2, a3, a4, a5, a6, a7) => [1, a1, a2, a3, a4, a5, a6, a7],
-        //     MapMemory(a1, a2, a3) => [2, a1 as usize, a2 as usize, a3, 0, 0, 0, 0],
-        //     call_formatter!(Yield),
-        //     Suspend(a1, a2) => [4, a1 as usize, a2, 0, 0, 0, 0, 0],
-        //     Invalid(a1, a2, a3, a4, a5, a6, a7) => [!0, a1, a2, a3, a4, a5, a6, a7],
-        // }
     }
     pub fn from_args(a0: usize, a1: usize, a2: usize, a3: usize, a4: usize, a5: usize, a6: usize, a7: usize) -> Result<Self, InvalidSyscall> {
         Ok(match FromPrimitive::from_usize(a0) {
@@ -119,8 +169,7 @@ impl SysCall {
             Some(SysCallNumber::Suspend) => SysCall::Suspend(a1 as XousPid, a2),
             Some(SysCallNumber::ClaimInterrupt) => SysCall::ClaimInterrupt(a1, a2 as *mut usize, a3 as *mut usize),
             Some(SysCallNumber::FreeInterrupt) => SysCall::FreeInterrupt(a1),
-            Some(SysCallNumber::SwitchTo) => SysCall::SwitchTo(a1 as XousPid, a2 as *const usize, a3 as *mut usize),
-            Some(SysCallNumber::Resume) => SysCall::Resume(a1 as XousPid),
+            Some(SysCallNumber::SwitchTo) => SysCall::SwitchTo(a1 as XousPid, a2 as *const usize),
             Some(SysCallNumber::Invalid) => SysCall::Invalid(a1, a2, a3, a4, a5, a6, a7),
             None => return Err(InvalidSyscall {}),
         })

@@ -24,11 +24,6 @@ use xous::*;
 //         address_size: MemorySize,
 //     ) -> Result<XousPid, XousError>;
 
-//     /// Pauses execution of the current thread and returns execution to the parent
-//     /// process.  This function may return at any time in the future, including immediately.
-//     #[allow(dead_code)]
-//     pub fn sys_process_yield();
-
 //     /// Interrupts the current process and returns control to the parent process.
 //     ///
 //     /// # Errors
@@ -37,83 +32,6 @@ use xous::*;
 //     #[allow(dead_code)]
 //     pub fn sysi_process_suspend(pid: XousPid, cpu_id: XousCpuId) -> Result<(), XousError>;
 
-//     /// Locks the system by disabling interrupts.
-//     ///
-//     /// # Errors
-//     ///
-//     /// * **InterruptNotFound**: The system is not currently executing an interrupt.
-//     #[allow(dead_code)]
-//     pub fn sys_lock() -> Result<(), XousError>;
-
-//     /// Unlocks the system by enabling interrupts
-//     ///
-//     /// # Errors
-//     ///
-//     /// * **InterruptNotFound**: The system is not currently locked.
-//     #[allow(dead_code)]
-//     pub fn sys_unlock() -> Result<(), XousError>;
-
-//     /// Returns the interrupt back to the operating system and masks it again.
-//     /// This function is implicitly called when a process exits.
-//     ///
-//     /// # Errors
-//     ///
-//     /// * **InterruptNotFound**: The specified interrupt doesn't exist, or isn't assigned
-//     ///                          to this process.
-//     #[allow(dead_code)]
-//     pub fn sys_interrupt_free(irq: usize) -> Result<(), XousError>;
-
-//     /// Resumes a process using the given stack pointer.  A parent could use
-//     /// this function to implement multi-threading inside a child process, or
-//     /// to create a task switcher.
-//     ///
-//     /// To resume a process exactly where it left off, set `stack_pointer` to `None`.
-//     /// This would be done in a very simple system that has no threads.
-//     ///
-//     /// By default, at most three context switches can be made before the quantum
-//     /// expires.  To enable more, pass `additional_contexts`.
-//     ///
-//     /// If no more contexts are available when one is required, then the child
-//     /// automatically relinquishes its quantum.
-//     ///
-//     /// # Returns
-//     ///
-//     /// When this function returns, it provides a list of the processes and
-//     /// stack pointers that are ready to be run.  Three can fit as return values,
-//     /// and additional context switches will be supplied in the slice of context
-//     /// switches, if one is provided.
-//     ///
-//     /// # Examples
-//     ///
-//     /// If a process called `yield()`, or if its quantum expired normally, then
-//     /// a single context is returned: The target thread, and its stack pointer.
-//     ///
-//     /// If the child process called `client_send()` and ended up blocking due to
-//     /// the server not being ready, then this would return no context switches.
-//     /// This thread or process should not be scheduled to run.
-//     ///
-//     /// If the child called `client_send()` and the server was ready, then the
-//     /// server process would be run immediately.  If the child process' quantum
-//     /// expired while the server was running, then this function would return
-//     /// a single context containing the PID of the server, and the stack pointer.
-//     ///
-//     /// If the child called `client_send()` and the server was ready, then the
-//     /// server process would be run immediately.  If the server then finishes,
-//     /// execution flow is returned to the child process.  If the quantum then
-//     /// expires, this would return two contexts: the server's PID and its stack
-//     /// pointer when it called `client_reply()`, and the child's PID with its
-//     /// current stack pointer.
-//     ///
-//     /// If the server in turn called another server, and both servers ended up
-//     /// returning to the child before the quantum expired, then there would be
-//     /// three contexts on the stack.
-//     ///
-//     /// # Errors
-//     ///
-//     /// * **ProcessNotFound**: The requested process does not exist
-//     /// * **ProcessNotChild**: The given process was not a child process, and
-//     ///                        therefore couldn't be resumed.
-//     /// * **ProcessTerminated**: The process has crashed.
 //     #[allow(dead_code)]
 //     pub fn sys_process_resume(
 //         process_id: XousPid,
@@ -261,10 +179,15 @@ pub fn handle(call: SysCall) -> XousResult {
                 result
             }
         }
-        SysCall::Resume(pid) => XousResult::Error(
-            ss.resume_pid(pid, ProcessState::Ready)
-                .expect_err("resume pid failed"),
-        ),
+        SysCall::SwitchTo(pid, context) => {
+            if context as usize != 0 {
+                panic!("specifying a context page is not yet supported");
+            }
+            XousResult::Error(
+                ss.resume_pid(pid, ProcessState::Ready)
+                    .expect_err("resume pid failed"),
+            )
+        }
         SysCall::ClaimInterrupt(no, callback, arg) => {
             interrupt_claim(no, pid as definitions::XousPid, callback, arg)
                 .map(|_| XousResult::Ok)
