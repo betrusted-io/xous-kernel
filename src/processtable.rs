@@ -46,6 +46,21 @@ pub struct Process {
     /// The process that created this process, which tells
     /// who is allowed to manipulate this process.
     pub ppid: XousPid,
+
+    /// Default virtual address when MapMemory is called with no `virt`
+    pub mem_default_base: usize,
+
+    /// Address where messages are passed into
+    pub mem_message_base: usize,
+
+    /// Base address of the heap
+    pub mem_heap_base: usize,
+
+    /// Current size of the heap
+    pub mem_heap_size: usize,
+
+    /// Maximum size of the heap
+    pub mem_heap_max: usize,
 }
 
 impl Process {
@@ -86,6 +101,11 @@ static mut SYSTEM_SERVICES: SystemServices = SystemServices {
         state: ProcessState::Free,
         ppid: 0,
         mapping: arch::mem::DEFAULT_MEMORY_MAPPING,
+        mem_default_base: arch::mem::DEFAULT_BASE,
+        mem_message_base: arch::mem::DEFAULT_MESSAGE_BASE,
+        mem_heap_base: arch::mem::DEFAULT_HEAP_BASE,
+        mem_heap_size: 0,
+        mem_heap_max: 0,
     }; MAX_PROCESS_COUNT],
 };
 
@@ -108,14 +128,14 @@ impl SystemServices {
         };
 
         let ref mut ss = unsafe { &mut SYSTEM_SERVICES };
-        // println!("Iterating over {} processes...", init_offsets.len());
+        println!("Iterating over {} processes...", init_offsets.len());
         // Copy over the initial process list
         for init in init_offsets.iter() {
             let pid = (init.satp >> 22) & ((1 << 9) - 1);
             let ref mut process = ss.processes[(pid - 1) as usize];
-            // println!("Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}",
-            // init.satp, pid, init.satp << 10, init.entrypoint, init.sp);
-            process.mapping.set(init.satp);
+            println!("Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}  Index: {}",
+            init.satp, pid, init.satp << 10, init.entrypoint, init.sp, pid-1);
+            process.mapping.set_raw(init.satp);
             process.ppid = if pid == 1 { 0 } else { 1 };
             process.state = ProcessState::Setup(init.entrypoint, init.sp);
         }
@@ -146,13 +166,18 @@ impl SystemServices {
         Ok(&mut self.processes[pid_idx])
     }
 
-    fn current_pid(&mut self) -> XousPid {
+    pub fn current_pid(&self) -> XousPid {
         let pid = arch::current_pid();
         assert_ne!(pid, 0, "no current process");
         // PID0 doesn't exist -- process IDs are offset by 1.
         assert_eq!(self.processes[pid as usize - 1].mapping, MemoryMapping::current(),
-            "process memory map doesn't match");
+            "process memory map doesn't match -- current_pid: {}", pid);
         pid as XousPid
+    }
+
+    pub fn current_process(&mut self) -> Result<&mut Process, XousError> {
+        let pid = self.current_pid();
+        self.get_process(pid)
     }
 
     /// Create a stack frame in the specified process and jump to it.

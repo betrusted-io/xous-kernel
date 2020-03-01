@@ -1,5 +1,5 @@
-use crate::arch::mem::USER_STACK_OFFSET;
 use crate::mem::MemoryManager;
+use crate::arch::mem::MemoryMapping;
 use crate::processtable::{ProcessContext, ProcessState, SystemServices, RETURN_FROM_ISR};
 use vexriscv::register::{scause, sepc, sie, sstatus, stval, vsim, vsip};
 use xous::{SysCall, XousError, XousPid, XousResult, MemoryFlags};
@@ -92,8 +92,8 @@ pub fn trap_handler(
                 }
             }
         }
-        // If the CPU tries to store, assume it's blown out its stack and
-        // allocate a new page there.
+        // If the CPU tries to store, lok for a "reserved page" and provide
+        // it with one if necessary.
         if let RiscvException::StorePageFault(pc, sp) = ex {
             assert!(
                 pid > 1,
@@ -101,8 +101,8 @@ pub fn trap_handler(
                 pc,
                 sp
             );
-            // If the stack seems sane, simply give the user more stack.
-            if sp < USER_STACK_OFFSET && USER_STACK_OFFSET - sp <= 262144 {
+            let mapping = MemoryMapping::current();
+            if mapping.current_mapping(sp) & 3 == 2 {
                 let mm = unsafe { MemoryManager::get() };
                 let new_page = mm.alloc_page(pid).expect("Couldn't allocate new page");
                 println!(
@@ -110,9 +110,10 @@ pub fn trap_handler(
                     new_page,
                     (sp & !4095)
                 );
-                mm.map_page(
+                mm.map_range(
                     new_page as *mut usize,
                     (sp & !4095) as *mut usize,
+                    4096,
                     MemoryFlags::W | MemoryFlags::R,
                 )
                 .expect("Couldn't map new stack");

@@ -48,7 +48,7 @@ pub mod mem {
     #[derive(Copy, Clone, Default, PartialEq)]
     pub struct MemoryMapping {}
     impl MemoryMapping {
-        pub fn set(&mut self, new: usize) {
+        pub fn set_raw(&mut self, new: usize) {
             unimplemented!();
         }
         pub fn get_pid(&self) -> XousPid {
@@ -89,7 +89,12 @@ pub mod mem {
     }
 
     pub const DEFAULT_MEMORY_MAPPING: MemoryMapping = MemoryMapping {};
-    pub const USER_STACK_OFFSET: usize = 0xdfff_fffc;
+
+    pub const DEFAULT_STACK_TOP: usize = 0xffff_0000;
+    pub const DEFAULT_HEAP_BASE: usize = 0x4000_0000;
+    pub const DEFAULT_MESSAGE_BASE: usize = 0x8000_0000;
+    pub const DEFAULT_BASE: usize = 0xc000_0000;
+
     pub const USER_AREA_START: usize = 0x00c0_0000;
     pub const PAGE_SIZE: usize = 4096;
 }

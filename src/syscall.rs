@@ -133,56 +133,30 @@ use xous::*;
 
 pub fn handle(call: SysCall) -> XousResult {
     let pid = arch::current_pid();
-    let mm = unsafe { MemoryManager::get() };
-    let ss = unsafe { SystemServices::get() };
 
-    println!("PID{} Syscall: {:?}", pid, call);
+    // println!("PID{} Syscall: {:?}", pid, call);
     match call {
-        SysCall::MapMemory(phys, virt, size, req_flags) => {
-            if (virt as usize) < arch::mem::USER_AREA_START {
-                XousResult::Error(XousError::BadAddress)
+        SysCall::MapPhysical(phys, virt, size, req_flags) => {
+            let mm = unsafe { MemoryManager::get() };
+            if pid != 1 && (virt as usize) != 0 && (virt as usize) < arch::mem::USER_AREA_START {
+                return XousResult::Error(XousError::BadAddress);
             } else if size & 4095 != 0 {
                 // println!("map: bad alignment of size {:08x}", size);
-                XousResult::Error(XousError::BadAlignment)
-            } else {
-                // println!(
-                //     "Mapping {:08x} -> {:08x} ({} bytes, flags: {:?})",
-                //     phys as u32, virt as u32, size, req_flags
-                // );
-                let mut last_mapped = 0;
-                let mut result = XousResult::Ok;
-                for offset in (0..size).step_by(4096) {
-                    if let XousResult::Error(e) = mm
-                        .map_page(
-                            ((phys as usize) + offset) as *mut usize,
-                            ((virt as usize) + offset) as *mut usize,
-                            req_flags,
-                        )
-                        .map(|x| XousResult::MemoryAddress(x.get() as *mut usize))
-                        .unwrap_or_else(|e| XousResult::Error(e))
-                    {
-                        result = XousResult::Error(e);
-                        break;
-                    }
-                    last_mapped = offset;
-                }
-                if result != XousResult::Ok {
-                    for offset in (0..last_mapped).step_by(4096) {
-                        mm.unmap_page(
-                            ((phys as usize) + offset) as *mut usize,
-                            ((virt as usize) + offset) as *mut usize,
-                            req_flags,
-                        )
-                        .expect("couldn't unmap page");
-                    }
-                }
-                result
+                return XousResult::Error(XousError::BadAlignment);
             }
+            // println!(
+            //     "Mapping {:08x} -> {:08x} ({} bytes, flags: {:?})",
+            //     phys as u32, virt as u32, size, req_flags
+            // );
+            mm.map_range(phys, virt, size, req_flags)
+                .map(|x| XousResult::Ok)
+                .unwrap_or_else(|e| XousResult::Error(e))
         }
         SysCall::SwitchTo(pid, context) => {
             if context as usize != 0 {
                 panic!("specifying a context page is not yet supported");
             }
+            let ss = unsafe { SystemServices::get() };
             XousResult::Error(
                 ss.resume_pid(pid, ProcessState::Ready)
                     .expect_err("resume pid failed"),
@@ -194,6 +168,7 @@ pub fn handle(call: SysCall) -> XousResult {
                 .unwrap_or_else(|e| XousResult::Error(e))
         }
         SysCall::Yield => {
+            let ss = unsafe { SystemServices::get() };
             let ppid = ss.get_process(pid).expect("Can't get current process").ppid;
             assert_ne!(ppid, 0, "no parent process id");
             // current_context.registers[10] = 0;
@@ -202,6 +177,7 @@ pub fn handle(call: SysCall) -> XousResult {
             XousResult::Error(XousError::ProcessNotFound)
         }
         SysCall::WaitEvent => {
+            let ss = unsafe { SystemServices::get() };
             let process = ss.get_process(pid).expect("Can't get current process");
             let ppid = process.ppid;
             assert_ne!(ppid, 0, "no parent process id");

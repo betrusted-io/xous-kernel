@@ -1,12 +1,12 @@
 use crate::args::KernelArguments;
-use crate::definitions::{MemoryAddress, XousError, XousPid};
 use core::fmt;
 use core::mem;
 use core::slice;
 use core::str;
+use crate::processtable::SystemServices;
 
 pub use crate::arch::mem::PAGE_SIZE;
-use xous::MemoryFlags;
+use xous::{MemoryFlags, MemoryType, XousResult, XousError, MemoryAddress, XousPid};
 
 #[derive(Debug)]
 enum ClaimOrRelease {
@@ -50,6 +50,7 @@ pub struct MemoryManager {
     ram_start: usize,
     ram_size: usize,
     ram_name: u32,
+    last_address: usize,
 }
 
 static mut MEMORY_MANAGER: MemoryManager = MemoryManager {
@@ -58,6 +59,7 @@ static mut MEMORY_MANAGER: MemoryManager = MemoryManager {
     ram_start: 0,
     ram_size: 0,
     ram_name: 0,
+    last_address: 0,
 };
 
 
@@ -204,25 +206,91 @@ impl MemoryManager {
     /// # Errors
     ///
     /// * MemoryInUse - The specified page is already mapped
-    pub fn map_page(
+    pub fn map_range(
         &mut self,
-        phys: *mut usize,
-        virt: *mut usize,
+        phys_ptr: *mut usize,
+        virt_ptr: *mut usize,
+        size: usize,
         flags: MemoryFlags,
     ) -> Result<MemoryAddress, XousError> {
-        let pid = crate::arch::current_pid();
+        let ss = unsafe { SystemServices::get() };
+        let process = ss.current_process()?;
+        let pid = ss.current_pid();
+        let phys = phys_ptr as usize;
+        let virt = virt_ptr as usize;
 
-        self.claim_page(phys, pid)?;
-        match crate::arch::mem::map_page_inner(self, pid, phys as usize, virt as usize, flags) {
-            Ok(_) => {
-                MemoryAddress::new(virt as usize).ok_or(XousError::BadAddress)
-            }
-            Err(e) => {
-                self.release_page(phys, pid)?;
-                Err(e)
+        if phys == 0 || virt == 0 {
+            println!("Attempted to map a range without specifying phys or virt");
+            return Err(XousError::BadAddress);
+        }
+
+        let mut error = None;
+        for phys in (phys..(phys+size)).step_by(PAGE_SIZE) {
+            if let Err(err) = self.claim_page(phys_ptr, pid){
+                error = Some(err);
+                break;
             }
         }
+        if let Some(err) = error {
+            for phys in (phys..(phys+size)).step_by(PAGE_SIZE) {
+                self.release_page(phys_ptr, pid).ok();
+            }
+            return Err(err);
+        }
+
+        for phys in (phys..(phys+size)).step_by(PAGE_SIZE) {
+            if let Err(e) = crate::arch::mem::map_page_inner(self, pid, phys as usize, virt as usize, flags) {
+                error = Some(e);
+                break;
+            }
+        }
+
+        if let Some(err) = error {
+            for phys in (phys..(phys+size)).step_by(PAGE_SIZE) {
+                self.release_page(phys_ptr, pid).ok();
+            }
+            return Err(err);
+        }
+
+        Ok(MemoryAddress::new(virt).unwrap())
     }
+
+    // /// Map a range of physical addresses into the current memory space.
+    // pub fn map_range(&mut self, phys: *mut usize, virt: *mut usize, size: usize, flags: MemoryFlags) -> XousResult {
+    //     // If a physical address range was requested, verify that it is valid
+    //     if phys as usize != 0 {
+
+    //     }
+    //     let virt = if virt as usize == 0 {
+    //         // No virt address was 
+    //     }
+    //     for offset in (0..size).step_by(4096) {
+    //         if let XousResult::Error(e) = crate::arch::mem::
+    //             map_page_inner(
+    //                 ((phys as usize) + offset) as usize,
+    //                 ((virt as usize) + offset) as usize,
+    //                 req_flags,
+    //             )
+    //             .map(|x| XousResult::MemoryAddress(x.get() as *mut usize))
+    //             .unwrap_or_else(|e| XousResult::Error(e))
+    //         {
+    //             result = XousResult::Error(e);
+    //             break;
+    //         }
+    //         last_mapped = offset;
+    //     }
+    //     if result != XousResult::Ok {
+    //         for offset in (0..last_mapped).step_by(4096) {
+    //             mm.unmap_page(
+    //                 ((phys as usize) + offset) as *mut usize,
+    //                 ((virt as usize) + offset) as *mut usize,
+    //                 req_flags,
+    //             )
+    //             .expect("couldn't unmap page");
+    //         }
+    //     }
+    //     result
+    // }
 
     /// Attempt to map the given physical address into the virtual address space
     /// of this process.

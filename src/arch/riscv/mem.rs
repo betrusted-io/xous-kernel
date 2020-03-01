@@ -3,7 +3,11 @@ use core::fmt;
 use vexriscv::register::satp;
 use xous::{XousError, XousPid, MemoryFlags};
 
-pub const USER_STACK_OFFSET: usize = 0xdfff_fffc;
+pub const DEFAULT_STACK_TOP: usize = 0xffff_0000;
+pub const DEFAULT_HEAP_BASE: usize = 0x4000_0000;
+pub const DEFAULT_MESSAGE_BASE: usize = 0x8000_0000;
+pub const DEFAULT_BASE: usize = 0xc000_0000;
+
 pub const USER_AREA_START: usize = 0x00c0_0000;
 pub const PAGE_SIZE: usize = 4096;
 const PAGE_TABLE_OFFSET: usize = 0x0040_0000;
@@ -45,20 +49,53 @@ impl core::fmt::Debug for MemoryMapping {
     }
 }
 
+/// Controls MMU configurations.
 impl MemoryMapping {
-    pub fn set(&mut self, new: usize) {
-        self.satp = new;
+    /// Create a new MemoryMapping with the given SATP value.
+    /// Note that the SATP contains a physical address.
+    /// The specified address MUST be mapped to `PAGE_TABLE_ROOT_OFFSET`.
+    // pub fn set(&mut self, root_addr: usize, pid: XousPid) {
+    //     self.satp: 0x8000_0000 | (((pid as usize) << 22) & (((1 << 9) - 1) << 22)) | (root_addr >> 12)
+    // }
+    pub fn set_raw(&mut self, satp: usize) {
+        self.satp = satp;
     }
-    pub fn get_pid(&self) -> XousPid {
-        (self.satp >> 22 & ((1 << 9) - 1)) as XousPid
-    }
+
+    /// Get the currently active memory mapping.  Note that the actual root pages
+    /// may be found at virtual address `PAGE_TABLE_ROOT_OFFSET`.
     pub fn current() -> MemoryMapping {
         MemoryMapping {
             satp: satp::read().bits(),
         }
     }
+
+    /// Get the "PID" (actually, ASID) from the current mapping
+    pub fn get_pid(&self) -> XousPid {
+        (self.satp >> 22 & ((1 << 9) - 1)) as XousPid
+    }
+
+    /// Set this mapping as the systemwide mapping.
+    /// **Note:** This should only be called from the kernel, which
+    /// should be mapped into every possible address space.  As such,
+    /// this will only have an observable effect once code returns
+    /// to userspace.
     pub fn activate(&self) {
         satp::write(self.satp);
+    }
+
+    /// Get the flags for a given address, or `0` if none is set.
+    pub fn current_mapping(&self, addr: usize) -> usize {
+        let vpn1 = (addr >> 22) & ((1 << 10) - 1);
+        let vpn0 = (addr >> 12) & ((1 << 10) - 1);
+
+        let l1_pt = unsafe { &mut (*(PAGE_TABLE_ROOT_OFFSET as *mut RootPageTable)) };
+        let l0_pt = l1_pt.entries[vpn1];
+        if l0_pt & 1 == 0 {
+            return 0;
+        }
+        let l0pt_virt = PAGE_TABLE_OFFSET + vpn1 * PAGE_SIZE;
+        let ref mut l0_pt = unsafe { &mut (*(l0pt_virt as *mut LeafPageTable)) };
+        l0_pt.entries[vpn0 as usize]
     }
 }
 

@@ -42,6 +42,8 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
     let args = args::KernelArguments::new(arg_offset);
     let _memory_manager =
         MemoryManager::new(rpt_offset, &args).expect("couldn't create memory manager");
+    let system_services = SystemServices::new(init_offset, &args);
+    arch::init();
 
     // Either map memory using a syscall, or if we're debugging the syscall
     // handler then directly map it.
@@ -55,17 +57,16 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
     #[cfg(feature = "debug-print")]
     {
         _memory_manager
-            .map_page(
+            .map_range(
                 0xF0002000 as *mut usize,
                 ((debug::SUPERVISOR_UART.base as u32) & !4095) as *mut usize,
+                4096,
                 MemoryFlags::R | MemoryFlags::W,
             )
             .expect("unable to map serial port");
         println!("KMAIN: Supervisor mode started...");
         debug::SUPERVISOR_UART.enable_rx();
     }
-    let system_services = SystemServices::new(init_offset, &args);
-    arch::init();
     println!("Kernel arguments:");
     for _arg in args.iter() {
         println!("    {}", _arg);

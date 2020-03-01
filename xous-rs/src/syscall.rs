@@ -7,6 +7,9 @@ bitflags! {
     /// Note that it is an error to have memory be
     /// writable and not readable.
     pub struct MemoryFlags: usize {
+        /// Free this memory
+        const FREE      = 0b00000000;
+
         /// Immediately allocate this memory.  Otherwise it will
         /// be demand-paged.  This is implicitly set when `phys`
         /// is not 0.
@@ -23,22 +26,43 @@ bitflags! {
     }
 }
 
+/// Which memory region the operation should affect.
+#[derive(Debug, Copy, Clone)]
+pub enum MemoryType {
+
+    /// The address where addresses go when no `virt` is specified.
+    Default = 1,
+
+    /// Addresses will begin here when `IncreaseHeap` is called.
+    Heap = 2,
+
+    /// When messages are passed to a process, they will go here.
+    Messages = 3,
+
+    /// Unlike other memory types, this defines the "end" of the region.
+    Stack = 4,
+}
+
+impl From<usize> for MemoryType {
+    fn from(arg: usize) -> Self {
+        match arg {
+            2 => MemoryType::Heap,
+            3 => MemoryType::Messages,
+            4 => MemoryType::Stack,
+            _ => MemoryType::Default,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum SysCall {
-    /// Allocates pages of memory, equal to a total of `size
-    /// bytes.  If a physical address is specified, then this
-    /// can be used to allocate regions such as memory-mapped I/O.
+    /// Allocates pages of memory, equal to a total of `size`
+    /// bytes.  A physical address may be specified, which can be
+    /// used to allocate regions such as memory-mapped I/O.
+    ///
     /// If a virtual address is specified, then the returned
     /// pages are located at that address.  Otherwise, they
-    /// are located at an unspecified offset.
-    ///
-    /// You can drop memory privileges by calling `MapMeory` with
-    /// the same `virt` parameter, but different `MemoryFlags`.
-    /// Note that you can only remove bits by doing this --
-    /// you cannot add bits.  For example, you could securely load
-    /// a program by mapping its `.text` section, then have it
-    /// drop read and write flags in order to make the text section
-    /// execute-only.
+    /// are located at the Default offset.
     ///
     /// # Errors
     ///
@@ -46,7 +70,46 @@ pub enum SysCall {
     ///                     or the size isn't a multiple of the page width.
     /// * **OutOfMemory**: A contiguous chunk of memory couldn't be found, or the system's
     ///                    memory size has been exceeded.
-    MapMemory(*mut usize /* phys */, *mut usize /* virt */, usize /* region size */, MemoryFlags /* flags */),
+    MapPhysical(*mut usize /* phys */, *mut usize /* virt */, usize /* region size */, MemoryFlags /* flags */),
+
+    /// Sets the offset and size of a given memory region.  This call may only be made
+    /// by processes that have not yet started, or processes that have a PPID of 1.
+    /// Care must be taken to ensure this region doesn't run into other regions.
+    /// Additionally, the base address must avoid the kernel regions.
+    ///
+    /// # Errors
+    ///
+    /// * **BadAlignment**: Either the physical or virtual addresses aren't page-aligned,
+    ///                     or the size isn't a multiple of the page width.
+    /// * **BadAddress**: The address conflicts with the kernel
+    SetMemRegion(XousPid /* pid */, MemoryType /* region type */, *mut usize /* region address */, usize /* region size */),
+
+    /// Add the given number of bytes to the heap.  The number of bytes
+    /// must be divisible by the page size.  The newly-allocated pages
+    /// will have the specified flags.
+    ///
+    /// # Errors
+    ///
+    /// * **BadAlignment**: Either the physical or virtual addresses aren't page-aligned,
+    ///                     or the size isn't a multiple of the page width.
+    /// * **OutOfMemory**: A contiguous chunk of memory couldn't be found, or the system's
+    ///                    memory size has been exceeded.
+    IncreaseHeap(usize /* number of bytes to add */, MemoryFlags),
+
+    /// Remove the given number of bytes from the heap.
+    ///
+    /// # Errors
+    ///
+    /// * **BadAlignment**: Either the physical or virtual addresses aren't page-aligned,
+    ///                     or the size isn't a multiple of the page width.
+    /// * **OutOfMemory**: A contiguous chunk of memory couldn't be found, or the system's
+    ///                    memory size has been exceeded.
+    DecreaseHeap(usize /* desired heap size */),
+
+    /// Set the specified flags on the virtual address range.
+    /// This can be used to REMOVE flags on a memory region, for example
+    /// to mark it as no-execute after writing program data.
+    UpdateMemoryFlags(*mut usize /* virt */, usize /* number of pages */, MemoryFlags /* new flags */),
 
     /// Pauses execution of the current thread and returns execution to the parent
     /// process.  This may return at any time in the future, including immediately.
@@ -135,13 +198,17 @@ pub enum SysCall {
 
 #[derive(FromPrimitive)]
 enum SysCallNumber {
-    MapMemory = 2,
+    MapPhysical = 2,
     Yield = 3,
     Suspend = 4,
     ClaimInterrupt = 5,
     FreeInterrupt = 6,
     SwitchTo = 7,
     WaitEvent = 9,
+    IncreaseHeap = 10,
+    DecreaseHeap = 11,
+    UpdateMemoryFlags = 12,
+    SetMemRegion = 13,
     Invalid,
 }
 
@@ -150,26 +217,37 @@ pub struct InvalidSyscall {}
 
 impl SysCall {
     pub fn as_args(&self) -> [usize; 8] {
+        use core::mem;
+        assert!(mem::size_of::<SysCall>() == mem::size_of::<usize>()*8, "SysCall is not the expected size");
         match *self {
-            SysCall::MapMemory(a1, a2, a3, a4) => [SysCallNumber::MapMemory as usize, a1 as usize, a2 as usize, a3, a4.bits(), 0, 0, 0],
+            SysCall::MapPhysical(a1, a2, a3, a4) => [SysCallNumber::MapPhysical as usize, a1 as usize, a2 as usize, a3, a4.bits(), 0, 0, 0],
             SysCall::Yield => [SysCallNumber::Yield as usize, 0, 0, 0, 0, 0, 0, 0],
             SysCall::WaitEvent => [SysCallNumber::WaitEvent as usize, 0, 0, 0, 0, 0, 0, 0],
             SysCall::Suspend(a1, a2) => [SysCallNumber::Suspend as usize, a1 as usize, a2 as usize, 0, 0, 0, 0, 0],
             SysCall::ClaimInterrupt(a1, a2, a3) => [SysCallNumber::ClaimInterrupt as usize, a1, a2 as usize, a3 as usize, 0, 0, 0, 0],
             SysCall::FreeInterrupt(a1) => [SysCallNumber::FreeInterrupt as usize, a1, 0, 0, 0, 0, 0, 0],
             SysCall::SwitchTo(a1, a2) => [SysCallNumber::SwitchTo as usize, a1 as usize, a2 as usize, 0, 0, 0, 0, 0],
+            SysCall::IncreaseHeap(a1, a2) => [SysCallNumber::IncreaseHeap as usize, a1 as usize, a2.bits(), 0, 0, 0, 0, 0],
+            SysCall::DecreaseHeap(a1) => [SysCallNumber::DecreaseHeap as usize, a1 as usize, 0, 0, 0, 0, 0, 0],
+            SysCall::UpdateMemoryFlags(a1, a2, a3) => [SysCallNumber::UpdateMemoryFlags as usize, a1 as usize, a2 as usize, a3.bits(), 0, 0, 0, 0],
+            SysCall::SetMemRegion(a1, a2, a3, a4) => [SysCallNumber::SetMemRegion as usize, a1 as usize, a2 as usize, a3 as usize, a4, 0, 0, 0],
+
             SysCall::Invalid(a1, a2, a3, a4, a5, a6, a7) => [SysCallNumber::Invalid as usize, a1, a2, a3, a4, a5, a6, a7],
         }
     }
     pub fn from_args(a0: usize, a1: usize, a2: usize, a3: usize, a4: usize, a5: usize, a6: usize, a7: usize) -> Result<Self, InvalidSyscall> {
         Ok(match FromPrimitive::from_usize(a0) {
-            Some(SysCallNumber::MapMemory) => SysCall::MapMemory(a1 as *mut usize, a2 as *mut usize, a3, MemoryFlags::from_bits(a4).ok_or(InvalidSyscall {})?),
+            Some(SysCallNumber::MapPhysical) => SysCall::MapPhysical(a1 as *mut usize, a2 as *mut usize, a3, MemoryFlags::from_bits(a4).ok_or(InvalidSyscall {})?),
             Some(SysCallNumber::Yield) => SysCall::Yield,
             Some(SysCallNumber::WaitEvent) => SysCall::WaitEvent,
             Some(SysCallNumber::Suspend) => SysCall::Suspend(a1 as XousPid, a2),
             Some(SysCallNumber::ClaimInterrupt) => SysCall::ClaimInterrupt(a1, a2 as *mut usize, a3 as *mut usize),
             Some(SysCallNumber::FreeInterrupt) => SysCall::FreeInterrupt(a1),
             Some(SysCallNumber::SwitchTo) => SysCall::SwitchTo(a1 as XousPid, a2 as *const usize),
+            Some(SysCallNumber::IncreaseHeap) => SysCall::IncreaseHeap(a1 as usize, MemoryFlags::from_bits(a2).ok_or(InvalidSyscall {})?),
+            Some(SysCallNumber::DecreaseHeap) => SysCall::DecreaseHeap(a1 as usize),
+            Some(SysCallNumber::UpdateMemoryFlags) => SysCall::UpdateMemoryFlags(a1 as *mut usize, a2 as usize, MemoryFlags::from_bits(a3).ok_or(InvalidSyscall {})?),
+            Some(SysCallNumber::SetMemRegion) => SysCall::SetMemRegion(a1 as XousPid, MemoryType::from(a2), a3 as *mut usize, a4),
             Some(SysCallNumber::Invalid) => SysCall::Invalid(a1, a2, a3, a4, a5, a6, a7),
             None => return Err(InvalidSyscall {}),
         })
