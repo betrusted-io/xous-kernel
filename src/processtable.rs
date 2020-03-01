@@ -128,13 +128,13 @@ impl SystemServices {
         };
 
         let ref mut ss = unsafe { &mut SYSTEM_SERVICES };
-        println!("Iterating over {} processes...", init_offsets.len());
+        // println!("Iterating over {} processes...", init_offsets.len());
         // Copy over the initial process list
         for init in init_offsets.iter() {
             let pid = (init.satp >> 22) & ((1 << 9) - 1);
             let ref mut process = ss.processes[(pid - 1) as usize];
-            println!("Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}  Index: {}",
-            init.satp, pid, init.satp << 10, init.entrypoint, init.sp, pid-1);
+            // println!("Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}  Index: {}",
+            // init.satp, pid, init.satp << 10, init.entrypoint, init.sp, pid-1);
             process.mapping.set_raw(init.satp);
             process.ppid = if pid == 1 { 0 } else { 1 };
             process.state = ProcessState::Setup(init.entrypoint, init.sp);
