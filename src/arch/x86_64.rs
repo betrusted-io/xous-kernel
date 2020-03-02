@@ -48,7 +48,7 @@ pub mod mem {
     #[derive(Copy, Clone, Default, PartialEq)]
     pub struct MemoryMapping {}
     impl MemoryMapping {
-        pub fn set_raw(&mut self, new: usize) {
+        pub unsafe fn from_raw(&mut self, new: usize) {
             unimplemented!();
         }
         pub fn get_pid(&self) -> XousPid {

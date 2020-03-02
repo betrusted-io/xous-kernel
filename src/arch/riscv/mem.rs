@@ -57,7 +57,7 @@ impl MemoryMapping {
     // pub fn set(&mut self, root_addr: usize, pid: XousPid) {
     //     self.satp: 0x8000_0000 | (((pid as usize) << 22) & (((1 << 9) - 1) << 22)) | (root_addr >> 12)
     // }
-    pub fn set_raw(&mut self, satp: usize) {
+    pub unsafe fn from_raw(&mut self, satp: usize) {
         self.satp = satp;
     }
 

@@ -135,7 +135,7 @@ impl SystemServices {
             let ref mut process = ss.processes[(pid - 1) as usize];
             // println!("Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}  Index: {}",
             // init.satp, pid, init.satp << 10, init.entrypoint, init.sp, pid-1);
-            process.mapping.set_raw(init.satp);
+            unsafe { process.mapping.from_raw(init.satp) };
             process.ppid = if pid == 1 { 0 } else { 1 };
             process.state = ProcessState::Setup(init.entrypoint, init.sp);
         }
