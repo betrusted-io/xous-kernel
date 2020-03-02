@@ -97,19 +97,34 @@ impl MemoryMapping {
         satp::write(self.satp);
     }
 
-    /// Get the flags for a given address, or `0` if none is set.
-    pub fn flags_for_address(&self, addr: usize) -> usize {
+    // /// Get the flags for a given address, or `0` if none is set.
+    // pub fn flags_for_address(&self, addr: usize) -> usize {
+    //     let vpn1 = (addr >> 22) & ((1 << 10) - 1);
+    //     let vpn0 = (addr >> 12) & ((1 << 10) - 1);
+
+    //     let l1_pt = unsafe { &mut (*(PAGE_TABLE_ROOT_OFFSET as *mut RootPageTable)) };
+    //     let l0_pt = l1_pt.entries[vpn1];
+    //     if l0_pt & 1 == 0 {
+    //         return 0;
+    //     }
+    //     let l0pt_virt = PAGE_TABLE_OFFSET + vpn1 * PAGE_SIZE;
+    //     let ref mut l0_pt = unsafe { &mut (*(l0pt_virt as *mut LeafPageTable)) };
+    //     l0_pt.entries[vpn0]
+    // }
+
+    /// Get the pagetable entry for a given address, or `0` if none is set.
+    pub fn pagetable_entry(&self, addr: usize) -> *mut usize {
         let vpn1 = (addr >> 22) & ((1 << 10) - 1);
         let vpn0 = (addr >> 12) & ((1 << 10) - 1);
 
-        let l1_pt = unsafe { &mut (*(PAGE_TABLE_ROOT_OFFSET as *mut RootPageTable)) };
-        let l0_pt = l1_pt.entries[vpn1];
-        if l0_pt & 1 == 0 {
-            return 0;
+        let l1_pt = unsafe { &(*(PAGE_TABLE_ROOT_OFFSET as *mut RootPageTable)) };
+        let l1_pte = l1_pt.entries[vpn1];
+        if l1_pte & 1 == 0 {
+            return 0 as *mut usize;
         }
-        let l0pt_virt = PAGE_TABLE_OFFSET + vpn1 * PAGE_SIZE;
-        let ref mut l0_pt = unsafe { &mut (*(l0pt_virt as *mut LeafPageTable)) };
-        l0_pt.entries[vpn0]
+        let l0_pt_virt = PAGE_TABLE_OFFSET + vpn1 * PAGE_SIZE;
+        let entry = (l0_pt_virt + vpn0*4) as *mut usize;
+        entry
     }
 
     pub fn reserve_address(

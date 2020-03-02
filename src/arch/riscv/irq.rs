@@ -9,6 +9,10 @@ extern "Rust" {
     fn xous_syscall_return_rust(result: &XousResult) -> !;
 }
 
+extern "C" {
+    fn flush_mmu();
+}
+
 /// Disable external interrupts
 pub fn disable_all_irqs() {
     unsafe { sie::clear_sext() };
@@ -31,32 +35,32 @@ pub fn disable_irq(irq_no: usize) {
 
 static mut PREVIOUS_PID: Option<XousPid> = None;
 
-fn map_page_and_return(pc: usize, addr: usize, pid: XousPid, flags: MemoryFlags) {
-    assert!(
-        pid > 1,
-        "kernel store page fault (pc: {:08x}  target: {:08x})",
-        pc,
-        addr
-    );
+// fn map_page_and_return(pc: usize, addr: usize, pid: XousPid, flags: MemoryFlags) {
+//     assert!(
+//         pid > 1,
+//         "kernel store page fault (pc: {:08x}  target: {:08x})",
+//         pc,
+//         addr
+//     );
 
-    {
-        let mut mm = MemoryManagerHandle::get();
-        let new_page = mm.alloc_page(pid).expect("Couldn't allocate new page");
-        println!(
-            "Allocating new physical page {:08x} @ {:08x}",
-            new_page,
-            (addr & !4095)
-        );
-        mm.map_range(
-            new_page as *mut usize,
-            (addr & !4095) as *mut usize,
-            4096,
-            flags,
-        )
-        .expect("Couldn't map new stack");
-    }
-    crate::arch::syscall::resume(current_pid() == 1, ProcessContext::current());
-}
+//     {
+//         let mut mm = MemoryManagerHandle::get();
+//         let new_page = mm.alloc_page(pid).expect("Couldn't allocate new page");
+//         println!(
+//             "Allocating new physical page {:08x} @ {:08x}",
+//             new_page,
+//             (addr & !4095)
+//         );
+//         mm.map_range(
+//             new_page as *mut usize,
+//             (addr & !4095) as *mut usize,
+//             4096,
+//             flags,
+//         )
+//         .expect("Couldn't map new stack");
+//     }
+//     crate::arch::syscall::resume(current_pid() == 1, ProcessContext::current());
+// }
 
 #[no_mangle]
 pub fn trap_handler(
@@ -115,12 +119,28 @@ pub fn trap_handler(
         // If the CPU tries to store, lok for a "reserved page" and provide
         // it with one if necessary.
         match ex {
-            RiscvException::StorePageFault(pc, sp) | RiscvException::LoadPageFault(pc, sp) => {
+            RiscvException::StorePageFault(pc, addr) | RiscvException::LoadPageFault(pc, addr) => {
+                println!("Fault {} @ {:08x}, addr {:08x}", ex, pc, addr);
                 let mapping = MemoryMapping::current();
-                let flags = mapping.flags_for_address(sp) & 7;
+                let entry = mapping.pagetable_entry(addr);
+                if entry as usize == 0 {
+                    panic!("pagetable consistency error");
+                }
+                let flags = unsafe { entry.read_volatile() } & 0xf;
                 if flags & 1 == 0 && flags != 0 {
-                    let flags = MemoryFlags::from_bits(flags).expect("couldn't return flags");
-                    map_page_and_return(pc, sp, pid, flags);
+                    let new_page = {
+                        let mut mm = MemoryManagerHandle::get();
+                        mm.alloc_page(pid).expect("Couldn't allocate new page")
+                    };
+                    let ppn1 = (new_page >> 22) & ((1 << 12) - 1);
+                    let ppn0 = (new_page >> 12) & ((1 << 10) - 1);
+                    unsafe {
+                        entry.write_volatile((ppn1 << 20) | (ppn0 << 10) |
+                        (flags | (1 << 0) /* valid */ | (1 << 4) /* USER */ | (1 << 6) /* D */ | (1 << 7) /* A */))
+                    };
+                    unsafe { flush_mmu() };
+                    crate::arch::syscall::resume(current_pid() == 1, ProcessContext::current());
+                    // map_page_and_return(pc, sp, pid, flags);
                 }
             }
             RiscvException::InstructionPageFault(RETURN_FROM_ISR, _offset) => {
