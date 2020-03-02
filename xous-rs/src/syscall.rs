@@ -1,4 +1,4 @@
-use crate::{XousPid, XousCpuId, XousError};
+use crate::{XousCpuId, XousError, XousPid};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
@@ -29,7 +29,6 @@ bitflags! {
 /// Which memory region the operation should affect.
 #[derive(Debug, Copy, Clone)]
 pub enum MemoryType {
-
     /// The address where addresses go when no `virt` is specified.
     Default = 1,
 
@@ -70,7 +69,12 @@ pub enum SysCall {
     ///                     or the size isn't a multiple of the page width.
     /// * **OutOfMemory**: A contiguous chunk of memory couldn't be found, or the system's
     ///                    memory size has been exceeded.
-    MapPhysical(*mut usize /* phys */, *mut usize /* virt */, usize /* region size */, MemoryFlags /* flags */),
+    MapPhysical(
+        *mut usize,  /* phys */
+        *mut usize,  /* virt */
+        usize,       /* region size */
+        MemoryFlags, /* flags */
+    ),
 
     /// Sets the offset and size of a given memory region.  This call may only be made
     /// by processes that have not yet started, or processes that have a PPID of 1.
@@ -82,7 +86,12 @@ pub enum SysCall {
     /// * **BadAlignment**: Either the physical or virtual addresses aren't page-aligned,
     ///                     or the size isn't a multiple of the page width.
     /// * **BadAddress**: The address conflicts with the kernel
-    SetMemRegion(XousPid /* pid */, MemoryType /* region type */, *mut usize /* region address */, usize /* region size */),
+    SetMemRegion(
+        XousPid,    /* pid */
+        MemoryType, /* region type */
+        *mut usize, /* region address */
+        usize,      /* region size */
+    ),
 
     /// Add the given number of bytes to the heap.  The number of bytes
     /// must be divisible by the page size.  The newly-allocated pages
@@ -118,7 +127,11 @@ pub enum SysCall {
     /// Set the specified flags on the virtual address range.
     /// This can be used to REMOVE flags on a memory region, for example
     /// to mark it as no-execute after writing program data.
-    UpdateMemoryFlags(*mut usize /* virt */, usize /* number of pages */, MemoryFlags /* new flags */),
+    UpdateMemoryFlags(
+        *mut usize,  /* virt */
+        usize,       /* number of pages */
+        MemoryFlags, /* new flags */
+    ),
 
     /// Pauses execution of the current thread and returns execution to the parent
     /// process.  This may return at any time in the future, including immediately.
@@ -138,7 +151,11 @@ pub enum SysCall {
     ///
     /// * **InterruptNotFound**: The specified interrupt isn't valid on this system
     /// * **InterruptInUse**: The specified interrupt has already been claimed
-    ClaimInterrupt(usize /* IRQ number */, *mut usize /* function pointer */, *mut usize /* argument */),
+    ClaimInterrupt(
+        usize,      /* IRQ number */
+        *mut usize, /* function pointer */
+        *mut usize, /* argument */
+    ),
 
     /// Returns the interrupt back to the operating system and masks it again.
     /// This function is implicitly called when a process exits.
@@ -227,36 +244,140 @@ pub struct InvalidSyscall {}
 impl SysCall {
     pub fn as_args(&self) -> [usize; 8] {
         use core::mem;
-        assert!(mem::size_of::<SysCall>() == mem::size_of::<usize>()*8, "SysCall is not the expected size");
+        assert!(
+            mem::size_of::<SysCall>() == mem::size_of::<usize>() * 8,
+            "SysCall is not the expected size"
+        );
         match *self {
-            SysCall::MapPhysical(a1, a2, a3, a4) => [SysCallNumber::MapPhysical as usize, a1 as usize, a2 as usize, a3, a4.bits(), 0, 0, 0],
+            SysCall::MapPhysical(a1, a2, a3, a4) => [
+                SysCallNumber::MapPhysical as usize,
+                a1 as usize,
+                a2 as usize,
+                a3,
+                a4.bits(),
+                0,
+                0,
+                0,
+            ],
             SysCall::Yield => [SysCallNumber::Yield as usize, 0, 0, 0, 0, 0, 0, 0],
             SysCall::WaitEvent => [SysCallNumber::WaitEvent as usize, 0, 0, 0, 0, 0, 0, 0],
-            SysCall::Suspend(a1, a2) => [SysCallNumber::Suspend as usize, a1 as usize, a2 as usize, 0, 0, 0, 0, 0],
-            SysCall::ClaimInterrupt(a1, a2, a3) => [SysCallNumber::ClaimInterrupt as usize, a1, a2 as usize, a3 as usize, 0, 0, 0, 0],
-            SysCall::FreeInterrupt(a1) => [SysCallNumber::FreeInterrupt as usize, a1, 0, 0, 0, 0, 0, 0],
-            SysCall::SwitchTo(a1, a2) => [SysCallNumber::SwitchTo as usize, a1 as usize, a2 as usize, 0, 0, 0, 0, 0],
-            SysCall::IncreaseHeap(a1, a2) => [SysCallNumber::IncreaseHeap as usize, a1 as usize, a2.bits(), 0, 0, 0, 0, 0],
-            SysCall::DecreaseHeap(a1) => [SysCallNumber::DecreaseHeap as usize, a1 as usize, 0, 0, 0, 0, 0, 0],
-            SysCall::UpdateMemoryFlags(a1, a2, a3) => [SysCallNumber::UpdateMemoryFlags as usize, a1 as usize, a2 as usize, a3.bits(), 0, 0, 0, 0],
-            SysCall::SetMemRegion(a1, a2, a3, a4) => [SysCallNumber::SetMemRegion as usize, a1 as usize, a2 as usize, a3 as usize, a4, 0, 0, 0],
+            SysCall::Suspend(a1, a2) => [
+                SysCallNumber::Suspend as usize,
+                a1 as usize,
+                a2 as usize,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+            SysCall::ClaimInterrupt(a1, a2, a3) => [
+                SysCallNumber::ClaimInterrupt as usize,
+                a1,
+                a2 as usize,
+                a3 as usize,
+                0,
+                0,
+                0,
+                0,
+            ],
+            SysCall::FreeInterrupt(a1) => {
+                [SysCallNumber::FreeInterrupt as usize, a1, 0, 0, 0, 0, 0, 0]
+            }
+            SysCall::SwitchTo(a1, a2) => [
+                SysCallNumber::SwitchTo as usize,
+                a1 as usize,
+                a2 as usize,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+            SysCall::IncreaseHeap(a1, a2) => [
+                SysCallNumber::IncreaseHeap as usize,
+                a1 as usize,
+                a2.bits(),
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+            SysCall::DecreaseHeap(a1) => [
+                SysCallNumber::DecreaseHeap as usize,
+                a1 as usize,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+            SysCall::UpdateMemoryFlags(a1, a2, a3) => [
+                SysCallNumber::UpdateMemoryFlags as usize,
+                a1 as usize,
+                a2 as usize,
+                a3.bits(),
+                0,
+                0,
+                0,
+                0,
+            ],
+            SysCall::SetMemRegion(a1, a2, a3, a4) => [
+                SysCallNumber::SetMemRegion as usize,
+                a1 as usize,
+                a2 as usize,
+                a3 as usize,
+                a4,
+                0,
+                0,
+                0,
+            ],
 
-            SysCall::Invalid(a1, a2, a3, a4, a5, a6, a7) => [SysCallNumber::Invalid as usize, a1, a2, a3, a4, a5, a6, a7],
+            SysCall::Invalid(a1, a2, a3, a4, a5, a6, a7) => {
+                [SysCallNumber::Invalid as usize, a1, a2, a3, a4, a5, a6, a7]
+            }
         }
     }
-    pub fn from_args(a0: usize, a1: usize, a2: usize, a3: usize, a4: usize, a5: usize, a6: usize, a7: usize) -> Result<Self, InvalidSyscall> {
+    pub fn from_args(
+        a0: usize,
+        a1: usize,
+        a2: usize,
+        a3: usize,
+        a4: usize,
+        a5: usize,
+        a6: usize,
+        a7: usize,
+    ) -> Result<Self, InvalidSyscall> {
         Ok(match FromPrimitive::from_usize(a0) {
-            Some(SysCallNumber::MapPhysical) => SysCall::MapPhysical(a1 as *mut usize, a2 as *mut usize, a3, MemoryFlags::from_bits(a4).ok_or(InvalidSyscall {})?),
+            Some(SysCallNumber::MapPhysical) => SysCall::MapPhysical(
+                a1 as *mut usize,
+                a2 as *mut usize,
+                a3,
+                MemoryFlags::from_bits(a4).ok_or(InvalidSyscall {})?,
+            ),
             Some(SysCallNumber::Yield) => SysCall::Yield,
             Some(SysCallNumber::WaitEvent) => SysCall::WaitEvent,
             Some(SysCallNumber::Suspend) => SysCall::Suspend(a1 as XousPid, a2),
-            Some(SysCallNumber::ClaimInterrupt) => SysCall::ClaimInterrupt(a1, a2 as *mut usize, a3 as *mut usize),
+            Some(SysCallNumber::ClaimInterrupt) => {
+                SysCall::ClaimInterrupt(a1, a2 as *mut usize, a3 as *mut usize)
+            }
             Some(SysCallNumber::FreeInterrupt) => SysCall::FreeInterrupt(a1),
             Some(SysCallNumber::SwitchTo) => SysCall::SwitchTo(a1 as XousPid, a2 as *const usize),
-            Some(SysCallNumber::IncreaseHeap) => SysCall::IncreaseHeap(a1 as usize, MemoryFlags::from_bits(a2).ok_or(InvalidSyscall {})?),
+            Some(SysCallNumber::IncreaseHeap) => SysCall::IncreaseHeap(
+                a1 as usize,
+                MemoryFlags::from_bits(a2).ok_or(InvalidSyscall {})?,
+            ),
             Some(SysCallNumber::DecreaseHeap) => SysCall::DecreaseHeap(a1 as usize),
-            Some(SysCallNumber::UpdateMemoryFlags) => SysCall::UpdateMemoryFlags(a1 as *mut usize, a2 as usize, MemoryFlags::from_bits(a3).ok_or(InvalidSyscall {})?),
-            Some(SysCallNumber::SetMemRegion) => SysCall::SetMemRegion(a1 as XousPid, MemoryType::from(a2), a3 as *mut usize, a4),
+            Some(SysCallNumber::UpdateMemoryFlags) => SysCall::UpdateMemoryFlags(
+                a1 as *mut usize,
+                a2 as usize,
+                MemoryFlags::from_bits(a3).ok_or(InvalidSyscall {})?,
+            ),
+            Some(SysCallNumber::SetMemRegion) => {
+                SysCall::SetMemRegion(a1 as XousPid, MemoryType::from(a2), a3 as *mut usize, a4)
+            }
             Some(SysCallNumber::Invalid) => SysCall::Invalid(a1, a2, a3, a4, a5, a6, a7),
             None => return Err(InvalidSyscall {}),
         })
@@ -278,18 +399,42 @@ pub enum XousResult {
 pub type SyscallResult = Result<XousResult, XousError>;
 
 extern "Rust" {
-    fn _xous_syscall_rust(nr: usize, a1: usize, a2: usize, a3: usize, a4: usize, a5: usize, a6: usize, a7: usize, ret: &mut XousResult);
-    fn _xous_syscall(nr: usize, a1: usize, a2: usize, a3: usize, a4: usize, a5: usize, a6: usize, a7: usize, ret: &mut XousResult);
+    fn _xous_syscall_rust(
+        nr: usize,
+        a1: usize,
+        a2: usize,
+        a3: usize,
+        a4: usize,
+        a5: usize,
+        a6: usize,
+        a7: usize,
+        ret: &mut XousResult,
+    );
+    fn _xous_syscall(
+        nr: usize,
+        a1: usize,
+        a2: usize,
+        a3: usize,
+        a4: usize,
+        a5: usize,
+        a6: usize,
+        a7: usize,
+        ret: &mut XousResult,
+    );
 }
 
 pub fn rsyscall(call: SysCall) -> SyscallResult {
-    use core::mem::{MaybeUninit};
+    use core::mem::MaybeUninit;
     let mut ret = unsafe { MaybeUninit::uninit().assume_init() };
     let args = call.as_args();
-    unsafe { _xous_syscall(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], &mut ret) };
+    unsafe {
+        _xous_syscall(
+            args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], &mut ret,
+        )
+    };
     match ret {
         XousResult::Error(e) => Err(e),
-        other => Ok(other)
+        other => Ok(other),
     }
 }
 
@@ -297,10 +442,16 @@ pub fn rsyscall(call: SysCall) -> SyscallResult {
 pub fn dangerous_syscall(call: SysCall) -> SyscallResult {
     use core::mem::{transmute, MaybeUninit};
     let mut ret = unsafe { MaybeUninit::uninit().assume_init() };
-    let presto = unsafe { transmute::<_, (usize, usize, usize, usize, usize, usize, usize, usize)>(call) };
-    unsafe { _xous_syscall_rust(presto.0, presto.1, presto.2, presto.3, presto.4, presto.5, presto.6, presto.7, &mut ret) };
+    let presto =
+        unsafe { transmute::<_, (usize, usize, usize, usize, usize, usize, usize, usize)>(call) };
+    unsafe {
+        _xous_syscall_rust(
+            presto.0, presto.1, presto.2, presto.3, presto.4, presto.5, presto.6, presto.7,
+            &mut ret,
+        )
+    };
     match ret {
         XousResult::Error(e) => Err(e),
-        other => Ok(other)
+        other => Ok(other),
     }
 }
