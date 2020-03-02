@@ -62,8 +62,6 @@ static mut MEMORY_MANAGER: MemoryManager = MemoryManager {
     last_address: 0,
 };
 
-use core::sync::atomic::{AtomicUsize, Ordering};
-
 /// How many people have checked out the handle object.
 /// This should be replaced by an AtomicUsize when we get
 /// multicore support.

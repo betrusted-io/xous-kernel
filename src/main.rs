@@ -51,15 +51,15 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
 
     // Either map memory using a syscall, or if we're debugging the syscall
     // handler then directly map it.
-    // xous::rsyscall(xous::SysCall::MapMemory(
-    //     0xF0002000 as *mut usize,
-    //     debug::SUPERVISOR_UART.base,
-    //     4096,
-    //     xous::MemoryFlags::R | xous::MemoryFlags::W,
-    // ))
-    // .unwrap();
     #[cfg(feature = "debug-print")]
     {
+        // xous::rsyscall(xous::SysCall::MapMemory(
+        //     0xF0002000 as *mut usize,
+        //     debug::SUPERVISOR_UART.base,
+        //     4096,
+        //     xous::MemoryFlags::R | xous::MemoryFlags::W,
+        // ))
+        // .unwrap();
         let mut memory_manager = MemoryManagerHandle::get();
         memory_manager
             .map_range(
@@ -71,20 +71,19 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
             .expect("unable to map serial port");
         println!("KMAIN: Supervisor mode started...");
         debug::SUPERVISOR_UART.enable_rx();
+        xous::rsyscall(xous::SysCall::ClaimInterrupt(
+            3,
+            debug::irq as *mut usize,
+            0 as *mut usize,
+        ))
+        .expect("Couldn't claim interrupt 3");
+        print!("}} ");
     }
+
     println!("Kernel arguments:");
     for _arg in args.iter() {
         println!("    {}", _arg);
     }
-
-    #[cfg(feature = "debug-print")]
-    xous::rsyscall(xous::SysCall::ClaimInterrupt(
-        3,
-        debug::irq as *mut usize,
-        0 as *mut usize,
-    ))
-    .expect("Couldn't claim interrupt 3");
-    print!("}} ");
 
     loop {
         let mut runnable = false;
