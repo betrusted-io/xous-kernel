@@ -305,22 +305,12 @@ pub fn map_page_inner(
 /// * BadAddress - Address was not already mapped.
 pub fn unmap_page_inner(
     _mm: &mut MemoryManager,
-    _pid: XousPid,
-    phys: usize,
     virt: usize,
-    _flags: MemoryFlags,
 ) -> Result<(), XousError> {
-    let ppn1 = (phys >> 22) & ((1 << 12) - 1);
-    let ppn0 = (phys >> 12) & ((1 << 10) - 1);
-    let ppo = (phys >> 0) & ((1 << 12) - 1);
-
     let vpn1 = (virt >> 22) & ((1 << 10) - 1);
     let vpn0 = (virt >> 12) & ((1 << 10) - 1);
     let vpo = (virt >> 0) & ((1 << 12) - 1);
 
-    assert!(ppn1 < 4096);
-    assert!(ppn0 < 1024);
-    assert!(ppo < 4096);
     assert!(vpn1 < 1024);
     assert!(vpn0 < 1024);
     assert!(vpo < 4096);
@@ -336,16 +326,42 @@ pub fn unmap_page_inner(
     let ref mut l0_pt = unsafe { &mut (*(l0pt_virt as *mut LeafPageTable)) };
 
     // Allocate a new level 1 pagetable entry if one doesn't exist.
-    if l1_pt[vpn1 as usize] & MMUFlags::VALID.bits() == 0 {
+    if l1_pt[vpn1] & MMUFlags::VALID.bits() == 0 {
         return Err(XousError::BadAddress);
     }
 
     // Ensure the entry hasn't already been mapped.
-    if l0_pt.entries[vpn0 as usize] & 1 == 0 {
+    if l0_pt.entries[vpn0] & 1 == 0 {
         return Err(XousError::BadAddress);
     }
-    l0_pt.entries[vpn0 as usize] = 0;
+    l0_pt.entries[vpn0] = 0;
     unsafe { flush_mmu() };
 
     Ok(())
+}
+
+pub fn virt_to_phys(virt: usize) -> Result<usize, XousError> {
+    let vpn1 = (virt >> 22) & ((1 << 10) - 1);
+    let vpn0 = (virt >> 12) & ((1 << 10) - 1);
+
+    // The root (l1) pagetable is defined to be mapped into our virtual
+    // address space at this address.
+    let l1_pt = unsafe { &mut (*(PAGE_TABLE_ROOT_OFFSET as *mut RootPageTable)) };
+    let ref mut l1_pt = l1_pt.entries;
+
+    // Subsequent pagetables are defined as being mapped starting at
+    // offset 0x0020_0004, so 4 must be added to the ppn1 value.
+    let l0pt_virt = PAGE_TABLE_OFFSET + vpn1 * PAGE_SIZE;
+    let ref mut l0_pt = unsafe { &mut (*(l0pt_virt as *mut LeafPageTable)) };
+
+    // Allocate a new level 1 pagetable entry if one doesn't exist.
+    if l1_pt[vpn1] & MMUFlags::VALID.bits() == 0 {
+        return Err(XousError::BadAddress);
+    }
+
+    // Ensure the entry hasn't already been mapped.
+    if l0_pt.entries[vpn0] & 1 == 0 {
+        return Err(XousError::BadAddress);
+    }
+    Ok(l0_pt.entries[vpn0])
 }

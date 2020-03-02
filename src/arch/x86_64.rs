@@ -179,3 +179,7 @@ fn _xous_syscall(
 ) {
     unimplemented!();
 }
+
+pub fn virt_to_phys(virt: usize) -> Result<usize, XousResult> {
+    unimplemented!();
+}
