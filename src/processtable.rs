@@ -106,7 +106,7 @@ static mut SYSTEM_SERVICES: SystemServices = SystemServices {
         mem_message_base: arch::mem::DEFAULT_MESSAGE_BASE,
         mem_heap_base: arch::mem::DEFAULT_HEAP_BASE,
         mem_heap_size: 0,
-        mem_heap_max: 0,
+        mem_heap_max: 524288,
     }; MAX_PROCESS_COUNT],
 };
 
