@@ -112,19 +112,6 @@ pub fn trap_handler(
     use crate::arch::exception::RiscvException;
     let ex = RiscvException::from_regs(sc.bits(), sepc::read(), stval::read());
     if sc.is_exception() {
-        if let RiscvException::InstructionPageFault(RETURN_FROM_ISR, _offset) = ex {
-            unsafe {
-                if let Some(previous_pid) = PREVIOUS_PID.take() {
-                    // println!("Resuming previous pid {}", previous_pid);
-                    SystemServicesHandle::get()
-                        .resume_pid(previous_pid, ProcessState::Ready)
-                        .expect("unable to resume previous PID");
-                }
-                // Re-enable interrupts now that they're handled
-                enable_all_irqs();
-                crate::arch::syscall::resume(current_pid() == 1, ProcessContext::current());
-            }
-        }
         // If the CPU tries to store, lok for a "reserved page" and provide
         // it with one if necessary.
         match ex {
@@ -135,7 +122,19 @@ pub fn trap_handler(
                     let flags = MemoryFlags::from_bits(flags).expect("couldn't return flags");
                     map_page_and_return(pc, sp, pid, flags);
                 }
-                println!("Flags don't match ({:08x})", flags);
+            }
+            RiscvException::InstructionPageFault(RETURN_FROM_ISR, _offset) => {
+                unsafe {
+                    if let Some(previous_pid) = PREVIOUS_PID.take() {
+                        // println!("Resuming previous pid {}", previous_pid);
+                        SystemServicesHandle::get()
+                            .resume_pid(previous_pid, ProcessState::Ready)
+                            .expect("unable to resume previous PID");
+                    }
+                    // Re-enable interrupts now that they're handled
+                    enable_all_irqs();
+                    crate::arch::syscall::resume(current_pid() == 1, ProcessContext::current());
+                }
             }
             _ => (),
         }
