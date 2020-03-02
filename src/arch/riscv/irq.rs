@@ -3,7 +3,7 @@ use crate::arch::mem::MemoryMapping;
 use crate::mem::MemoryManagerHandle;
 use crate::processtable::{ProcessContext, ProcessState, SystemServicesHandle, RETURN_FROM_ISR};
 use vexriscv::register::{scause, sepc, sie, sstatus, stval, vsim, vsip};
-use xous::{MemoryFlags, SysCall, XousError, XousPid, XousResult};
+use xous::{SysCall, XousError, XousPid, XousResult};
 
 extern "Rust" {
     fn xous_syscall_return_rust(result: &XousResult) -> !;
