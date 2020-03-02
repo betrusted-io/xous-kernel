@@ -226,9 +226,18 @@ impl MemoryManager {
         // Go through all RAM pages looking for a free page.
         // Optimization: start from the previous address.
         // println!("Allocating page for PID {}", pid);
-        for index in 0..(self.ram_size as usize) / PAGE_SIZE {
+        for index in self.last_address..((self.ram_size as usize) / PAGE_SIZE) {
             // println!("    Checking {:08x}...", index * PAGE_SIZE + self.ram_start as usize);
             if self.allocations[index] == 0 {
+                self.allocations[index] = pid;
+                self.last_address = index + 1;
+                return Ok(index * PAGE_SIZE + self.ram_start);
+            }
+        }
+        for index in 0..self.last_address {
+            // println!("    Checking {:08x}...", index * PAGE_SIZE + self.ram_start as usize);
+            if self.allocations[index] == 0 {
+                self.last_address = index;
                 self.allocations[index] = pid;
                 return Ok(index * PAGE_SIZE + self.ram_start);
             }
