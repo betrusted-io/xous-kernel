@@ -152,6 +152,57 @@ pub fn handle(call: SysCall) -> XousResult {
                 .map(|_x| XousResult::ReturnResult)
                 .unwrap_or_else(|e| XousResult::Error(e))
         }
+        SysCall::IncreaseHeap(delta, flags) => {
+            if delta & 0xfff != 0 {
+                return XousResult::Error(XousError::BadAlignment);
+            }
+            let start = {
+                let mut ss = SystemServicesHandle::get();
+                let process = ss.current_process_mut();
+                if let Err(e) = process {
+                    return XousResult::Error(e);
+                }
+                let process = process.unwrap();
+
+                if process.mem_heap_size + delta > process.mem_heap_max {
+                    return XousResult::Error(XousError::OutOfMemory);
+                }
+
+                let start = process.mem_heap_base + process.mem_heap_size;
+                process.mem_heap_size += delta;
+                start as *mut usize
+            };
+            let mut mm = MemoryManagerHandle::get();
+            mm.reserve_range(start, delta, flags)
+                .unwrap_or_else(|e| XousResult::Error(e))
+        }
+        SysCall::DecreaseHeap(delta) => {
+            if delta & 0xfff != 0 {
+                return XousResult::Error(XousError::BadAlignment);
+            }
+            let start = {
+                let mut ss = SystemServicesHandle::get();
+                let process = ss.current_process_mut();
+                if let Err(e) = process {
+                    return XousResult::Error(e);
+                }
+                let process = process.unwrap();
+
+                if process.mem_heap_size + delta > process.mem_heap_max {
+                    return XousResult::Error(XousError::OutOfMemory);
+                }
+
+                let start = process.mem_heap_base + process.mem_heap_size;
+                process.mem_heap_size -= delta;
+                start
+            };
+            let mut mm = MemoryManagerHandle::get();
+            for page in ((start - delta)..start).step_by(crate::arch::mem::PAGE_SIZE) {
+                mm.unmap_page(page as *mut usize)
+                    .expect("unable to unmap page");
+            }
+            XousResult::ReturnResult
+        }
         SysCall::SwitchTo(pid, context) => {
             if context as usize != 0 {
                 panic!("specifying a context page is not yet supported");
