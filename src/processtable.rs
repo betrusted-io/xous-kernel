@@ -1,7 +1,7 @@
+use crate::arch;
 use crate::args::KernelArguments;
 use crate::definitions::{XousError, XousPid};
 use core::slice;
-use crate::arch;
 // use vexriscv::register::{satp, sepc, sstatus};
 use crate::arch::mem::MemoryMapping;
 pub use crate::arch::ProcessContext;
@@ -111,11 +111,18 @@ static mut SYSTEM_SERVICES: SystemServices = SystemServices {
 
 impl core::fmt::Debug for Process {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
-        write!(fmt, "Process state: {:?}  Memory mapping: {:?}", self.state, self.mapping)
+        write!(
+            fmt,
+            "Process state: {:?}  Memory mapping: {:?}",
+            self.state, self.mapping
+        )
     }
 }
 
 impl SystemServices {
+    /// Create a new "System Services" object based on the arguments from the kernel.
+    /// These arguments decide where the memory spaces are located, as well as where
+    /// the stack and program counter should initially go.
     pub fn new(base: *const u32, args: &KernelArguments) -> &'static mut SystemServices {
         let init_offsets = {
             let mut init_count = 1;
@@ -170,8 +177,12 @@ impl SystemServices {
         let pid = arch::current_pid();
         assert_ne!(pid, 0, "no current process");
         // PID0 doesn't exist -- process IDs are offset by 1.
-        assert_eq!(self.processes[pid as usize - 1].mapping, MemoryMapping::current(),
-            "process memory map doesn't match -- current_pid: {}", pid);
+        assert_eq!(
+            self.processes[pid as usize - 1].mapping,
+            MemoryMapping::current(),
+            "process memory map doesn't match -- current_pid: {}",
+            pid
+        );
         pid as XousPid
     }
 
@@ -195,8 +206,14 @@ impl SystemServices {
         // it as "ready to run".
         {
             let current_pid = self.current_pid();
-            let mut current = self.get_process(current_pid).expect("couldn't get current PID");
-            assert_eq!(current.state, ProcessState::Running, "current process was not running");
+            let mut current = self
+                .get_process(current_pid)
+                .expect("couldn't get current PID");
+            assert_eq!(
+                current.state,
+                ProcessState::Running,
+                "current process was not running"
+            );
             current.state = ProcessState::Ready;
         }
 
@@ -221,12 +238,22 @@ impl SystemServices {
             *saved = *context;
         }
 
-        arch::syscall::invoke(pid == 1, pc as usize, context.get_stack(), RETURN_FROM_ISR, &[irq_no, arg as usize]);
+        arch::syscall::invoke(
+            pid == 1,
+            pc as usize,
+            context.get_stack(),
+            RETURN_FROM_ISR,
+            &[irq_no, arg as usize],
+        );
     }
 
     /// Resume the given process, picking up exactly where it left off.
     /// If the process is in the Setup state, set it up and then resume.
-    pub fn resume_pid(&mut self, pid: XousPid, previous_state: ProcessState) -> Result<(), XousError> {
+    pub fn resume_pid(
+        &mut self,
+        pid: XousPid,
+        previous_state: ProcessState,
+    ) -> Result<(), XousError> {
         let previous_pid = self.current_pid();
 
         // Save state if the PID has changed

@@ -1,12 +1,12 @@
 use crate::args::KernelArguments;
+use crate::processtable::SystemServices;
 use core::fmt;
 use core::mem;
 use core::slice;
 use core::str;
-use crate::processtable::SystemServices;
 
 pub use crate::arch::mem::PAGE_SIZE;
-use xous::{MemoryFlags, MemoryType, XousResult, XousError, MemoryAddress, XousPid};
+use xous::{MemoryAddress, MemoryFlags, MemoryType, XousError, XousPid, XousResult};
 
 #[derive(Debug)]
 enum ClaimOrRelease {
@@ -62,7 +62,52 @@ static mut MEMORY_MANAGER: MemoryManager = MemoryManager {
     last_address: 0,
 };
 
+use core::sync::atomic::{AtomicUsize, Ordering};
 
+/// How many people have checked out the handle object.
+/// This should be replaced by an AtomicUsize when we get
+/// multicore support.
+/// For now, we can get away with this since the memory manager
+/// should only be accessed in an IRQ context.
+static mut MM_HANDLE_COUNT: usize = 0;
+
+pub struct MemoryManagerHandle<'a> {
+    manager: &'a mut MemoryManager,
+}
+
+/// Wraps the MemoryManager in a safe mutex.  Because of this, accesses
+/// to the Memory Manager should only be made during interrupt contexts.
+impl<'a> MemoryManagerHandle<'a> {
+    /// Get the singleton memory manager.
+    pub fn get() -> MemoryManagerHandle<'a> {
+        let count = unsafe { MM_HANDLE_COUNT += 1; MM_HANDLE_COUNT - 1 };
+        if count != 0 {
+            panic!("Multiple users of MemoryManagerHandle!");
+        }
+        MemoryManagerHandle {
+            manager: unsafe { &mut MEMORY_MANAGER },
+        }
+    }
+}
+
+impl Drop for MemoryManagerHandle<'_> {
+    fn drop(&mut self) {
+        unsafe { MM_HANDLE_COUNT -= 1 };
+    }
+}
+
+use core::ops::{Deref, DerefMut};
+impl Deref for MemoryManagerHandle<'_> {
+    type Target = MemoryManager;
+    fn deref(&self) -> &MemoryManager {
+        &*self.manager
+    }
+}
+impl DerefMut for MemoryManagerHandle<'_> {
+    fn deref_mut(&mut self) -> &mut MemoryManager {
+        &mut *self.manager
+    }
+}
 
 /// Initialize the memory map.
 /// This will go through memory and map anything that the kernel is
@@ -70,11 +115,10 @@ static mut MEMORY_MANAGER: MemoryManager = MemoryManager {
 /// and place it at the usual offset.  The MMU will not be enabled yet,
 /// as the process entry has not yet been created.
 impl MemoryManager {
-    pub fn new(
+    pub fn init(&mut self,
         base: *mut u32,
         args: &KernelArguments,
-    ) -> Result<&'static mut MemoryManager, XousError> {
-        let ref mut mm = unsafe { &mut MEMORY_MANAGER };
+    ) -> Result<(), XousError> {
         let mut args_iter = args.iter();
         let xarg_def = args_iter.next().expect("mm: no kernel arguments found");
         assert!(
@@ -82,16 +126,16 @@ impl MemoryManager {
             "mm: first tag wasn't XArg"
         );
         assert!(xarg_def.data[1] == 1, "mm: XArg had unexpected version");
-        mm.ram_start = xarg_def.data[2] as usize;
-        mm.ram_size = xarg_def.data[3] as usize;
-        mm.ram_name = xarg_def.data[4];
+        self.ram_start = xarg_def.data[2] as usize;
+        self.ram_size = xarg_def.data[3] as usize;
+        self.ram_name = xarg_def.data[4];
 
-        let mut mem_size = mm.ram_size / PAGE_SIZE;
+        let mut mem_size = self.ram_size / PAGE_SIZE;
         for tag in args_iter {
             if tag.name == make_type!("MREx") {
-                assert!(mm.extra.len() == 0, "mm: MREx tag appears twice!");
+                assert!(self.extra.len() == 0, "mm: MREx tag appears twice!");
                 let ptr = tag.data.as_ptr() as *mut MemoryRangeExtra;
-                mm.extra = unsafe {
+                self.extra = unsafe {
                     slice::from_raw_parts_mut(
                         ptr,
                         tag.data.len() * 4 / mem::size_of::<MemoryRangeExtra>(),
@@ -100,17 +144,12 @@ impl MemoryManager {
             }
         }
 
-        for range in mm.extra.iter() {
+        for range in self.extra.iter() {
             mem_size += range.mem_size as usize / PAGE_SIZE;
         }
 
-        mm.allocations =
-            unsafe { slice::from_raw_parts_mut(base as *mut XousPid, mem_size) };
-        Ok(unsafe { &mut MEMORY_MANAGER })
-    }
-
-    pub unsafe fn get() -> &'static mut MemoryManager {
-        &mut MEMORY_MANAGER
+        self.allocations = unsafe { slice::from_raw_parts_mut(base as *mut XousPid, mem_size) };
+        Ok(())
     }
 
     // pub fn print_map(&self) {
@@ -199,7 +238,6 @@ impl MemoryManager {
         Err(XousError::OutOfMemory)
     }
 
-
     /// Attempt to map the given physical address into the virtual address space
     /// of this process.
     ///
@@ -225,28 +263,30 @@ impl MemoryManager {
         }
 
         let mut error = None;
-        for phys in (phys..(phys+size)).step_by(PAGE_SIZE) {
-            if let Err(err) = self.claim_page(phys_ptr, pid){
+        for phys in (phys..(phys + size)).step_by(PAGE_SIZE) {
+            if let Err(err) = self.claim_page(phys_ptr, pid) {
                 error = Some(err);
                 break;
             }
         }
         if let Some(err) = error {
-            for phys in (phys..(phys+size)).step_by(PAGE_SIZE) {
+            for phys in (phys..(phys + size)).step_by(PAGE_SIZE) {
                 self.release_page(phys_ptr, pid).ok();
             }
             return Err(err);
         }
 
-        for phys in (phys..(phys+size)).step_by(PAGE_SIZE) {
-            if let Err(e) = crate::arch::mem::map_page_inner(self, pid, phys as usize, virt as usize, flags) {
+        for phys in (phys..(phys + size)).step_by(PAGE_SIZE) {
+            if let Err(e) =
+                crate::arch::mem::map_page_inner(self, pid, phys as usize, virt as usize, flags)
+            {
                 error = Some(e);
                 break;
             }
         }
 
         if let Some(err) = error {
-            for phys in (phys..(phys+size)).step_by(PAGE_SIZE) {
+            for phys in (phys..(phys + size)).step_by(PAGE_SIZE) {
                 self.release_page(phys_ptr, pid).ok();
             }
             return Err(err);
@@ -262,7 +302,7 @@ impl MemoryManager {
 
     //     }
     //     let virt = if virt as usize == 0 {
-    //         // No virt address was 
+    //         // No virt address was
     //     }
     //     for offset in (0..size).step_by(4096) {
     //         if let XousResult::Error(e) = crate::arch::mem::
@@ -315,7 +355,6 @@ impl MemoryManager {
         pid: XousPid,
         action: ClaimOrRelease,
     ) -> Result<(), XousError> {
-
         fn action_inner(
             addr: &mut XousPid,
             pid: XousPid,
@@ -360,7 +399,10 @@ impl MemoryManager {
             }
             offset += region.mem_size as usize / PAGE_SIZE;
         }
-        println!("mem: unable to claim or release physical address {:08x}", addr);
+        println!(
+            "mem: unable to claim or release physical address {:08x}",
+            addr
+        );
         Err(XousError::BadAddress)
     }
 

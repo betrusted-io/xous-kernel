@@ -23,7 +23,7 @@ mod mem;
 mod processtable;
 mod syscall;
 
-use mem::MemoryManager;
+use mem::MemoryManagerHandle;
 use processtable::SystemServices;
 use xous::*;
 
@@ -40,8 +40,12 @@ fn handle_panic(_arg: &PanicInfo) -> ! {
 #[no_mangle]
 fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset: *mut u32) -> ! {
     let args = args::KernelArguments::new(arg_offset);
-    let _memory_manager =
-        MemoryManager::new(rpt_offset, &args).expect("couldn't create memory manager");
+    // Everything needs memory, so the first thing we should do is initialize the memory manager.
+    {
+
+        let mut memory_manager = MemoryManagerHandle::get();
+        memory_manager.init(rpt_offset, &args).expect("couldn't initialize memory manager");
+    }
     let system_services = SystemServices::new(init_offset, &args);
     arch::init();
 
@@ -56,7 +60,8 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
     // .unwrap();
     #[cfg(feature = "debug-print")]
     {
-        _memory_manager
+        let mut memory_manager = MemoryManagerHandle::get();
+        memory_manager
             .map_range(
                 0xF0002000 as *mut usize,
                 ((debug::SUPERVISOR_UART.base as u32) & !4095) as *mut usize,

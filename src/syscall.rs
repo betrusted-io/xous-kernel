@@ -1,6 +1,6 @@
 use crate::arch;
 use crate::irq::interrupt_claim;
-use crate::mem::MemoryManager;
+use crate::mem::MemoryManagerHandle;
 use crate::processtable::{ProcessState, SystemServices};
 use xous::*;
 
@@ -137,7 +137,7 @@ pub fn handle(call: SysCall) -> XousResult {
     // println!("PID{} Syscall: {:?}", pid, call);
     match call {
         SysCall::MapPhysical(phys, virt, size, req_flags) => {
-            let mm = unsafe { MemoryManager::get() };
+            let mut mm = MemoryManagerHandle::get();
             if pid != 1 && (virt as usize) != 0 && (virt as usize) < arch::mem::USER_AREA_START {
                 return XousResult::Error(XousError::BadAddress);
             } else if size & 4095 != 0 {
@@ -149,7 +149,7 @@ pub fn handle(call: SysCall) -> XousResult {
             //     phys as u32, virt as u32, size, req_flags
             // );
             mm.map_range(phys, virt, size, req_flags)
-                .map(|x| XousResult::Ok)
+                .map(|_x| XousResult::Ok)
                 .unwrap_or_else(|e| XousResult::Error(e))
         }
         SysCall::SwitchTo(pid, context) => {

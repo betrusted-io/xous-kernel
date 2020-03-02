@@ -1,4 +1,4 @@
-use crate::mem::MemoryManager;
+use crate::mem::MemoryManagerHandle;
 use crate::arch::mem::MemoryMapping;
 use crate::processtable::{ProcessContext, ProcessState, SystemServices, RETURN_FROM_ISR};
 use vexriscv::register::{scause, sepc, sie, sstatus, stval, vsim, vsip};
@@ -103,7 +103,7 @@ pub fn trap_handler(
             );
             let mapping = MemoryMapping::current();
             if mapping.current_mapping(sp) & 3 == 2 {
-                let mm = unsafe { MemoryManager::get() };
+                let mut mm = MemoryManagerHandle::get();
                 let new_page = mm.alloc_page(pid).expect("Couldn't allocate new page");
                 println!(
                     "Allocating new physical page {:08x} @ {:08x}",
