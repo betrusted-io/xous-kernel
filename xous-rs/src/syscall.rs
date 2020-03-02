@@ -86,7 +86,12 @@ pub enum SysCall {
 
     /// Add the given number of bytes to the heap.  The number of bytes
     /// must be divisible by the page size.  The newly-allocated pages
-    /// will have the specified flags.
+    /// will have the specified flags.  To get the current heap base,
+    /// call this with a size of `0`.
+    ///
+    /// # Returns
+    ///
+    /// * **MemoryRange(*mut usize /* The base of the heap */, usize /* the new size of the heap */)
     ///
     /// # Errors
     ///
@@ -97,6 +102,10 @@ pub enum SysCall {
     IncreaseHeap(usize /* number of bytes to add */, MemoryFlags),
 
     /// Remove the given number of bytes from the heap.
+    ///
+    /// # Returns
+    ///
+    /// * **MemoryRange(*mut usize /* The base of the heap */, usize /* the new size of the heap */)
     ///
     /// # Errors
     ///
@@ -259,6 +268,7 @@ impl SysCall {
 pub enum XousResult {
     ReturnResult,
     MemoryAddress(*mut usize),
+    MemoryRange(*mut usize /* base */, usize /* size */),
     ResumeResult(usize, usize, usize, usize, usize, usize),
     UnknownResult(usize, usize, usize, usize, usize, usize, usize),
     MaxResult4(usize, usize, usize, usize, usize, usize, usize),
