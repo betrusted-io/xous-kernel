@@ -5,15 +5,21 @@ extern "C" {
     fn return_to_user(regs: *const usize) -> !;
 }
 
-pub fn invoke(supervisor: bool, pc: usize, sp: usize, ret_addr: usize, args: &[usize]) -> ! {
+pub fn invoke(
+    context: &mut ProcessContext,
+    supervisor: bool,
+    pc: usize,
+    sp: usize,
+    ret_addr: usize,
+    args: &[usize],
+) {
     let mut regs = [0; 31];
-    regs[0] = ret_addr;
-    regs[1] = sp;
-    regs[9] = args[0];
-    regs[10] = args[1];
     set_supervisor(supervisor);
-    sepc::write(pc as usize);
-    unsafe { return_to_user(regs.as_ptr()) };
+    context.registers[0] = ret_addr;
+    context.registers[1] = sp;
+    context.registers[9] = args[0];
+    context.registers[10] = args[1];
+    context.sepc = pc;
 }
 
 fn set_supervisor(supervisor: bool) {

@@ -90,7 +90,6 @@ pub struct InitialProcess {
 
 /// A big unifying struct containing all of the system state.
 /// This is inherited from the stage 1 bootloader.
-#[repr(C)]
 pub struct SystemServices {
     /// A table of all processes on the system
     pub processes: [Process; MAX_PROCESS_COUNT],
@@ -123,7 +122,9 @@ impl SystemServices {
     /// Create a new "System Services" object based on the arguments from the kernel.
     /// These arguments decide where the memory spaces are located, as well as where
     /// the stack and program counter should initially go.
-    pub fn new(base: *const u32, args: &KernelArguments) -> &'static mut SystemServices {
+    pub fn init(&mut self, base: *const u32, args: &KernelArguments) {
+
+        // Look through the kernel arguments and create a new process for each.
         let init_offsets = {
             let mut init_count = 1;
             for arg in args.iter() {
@@ -134,27 +135,42 @@ impl SystemServices {
             unsafe { slice::from_raw_parts(base as *const InitialProcess, init_count) }
         };
 
-        let ref mut ss = unsafe { &mut SYSTEM_SERVICES };
-        // println!("Iterating over {} processes...", init_offsets.len());
-        // Copy over the initial process list
+        // Copy over the initial process list.  The pid is encoded in the SATP value
+        // from the bootloader.  For each process, translate it from a raw KernelArguments
+        // value to a SystemServices Process value.
         for init in init_offsets.iter() {
             let pid = (init.satp >> 22) & ((1 << 9) - 1);
-            let ref mut process = ss.processes[(pid - 1) as usize];
+            let ref mut process = self.processes[(pid - 1) as usize];
             // println!("Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}  Index: {}",
             // init.satp, pid, init.satp << 10, init.entrypoint, init.sp, pid-1);
             unsafe { process.mapping.from_raw(init.satp) };
             process.ppid = if pid == 1 { 0 } else { 1 };
             process.state = ProcessState::Setup(init.entrypoint, init.sp);
+
+            // Mark the stack as "unallocated-but-free"
+        }
+    }
+
+    pub fn get_process(&self, pid: XousPid) -> Result<&Process, XousError> {
+        if pid == 0 {
+            println!("Process not found -- PID is 0");
+            return Err(XousError::ProcessNotFound);
         }
 
-        unsafe { &mut SYSTEM_SERVICES }
+        // PID0 doesn't exist -- process IDs are offset by 1.
+        let pid_idx = pid as usize - 1;
+        if self.processes[pid_idx].mapping.get_pid() != pid {
+            println!(
+                "Process doesn't match ({} vs {})",
+                self.processes[pid_idx].mapping.get_pid(),
+                pid
+            );
+            return Err(XousError::ProcessNotFound);
+        }
+        Ok(&self.processes[pid_idx])
     }
 
-    pub unsafe fn get() -> &'static mut SystemServices {
-        &mut SYSTEM_SERVICES
-    }
-
-    pub fn get_process(&mut self, pid: XousPid) -> Result<&mut Process, XousError> {
+    pub fn get_process_mut(&mut self, pid: XousPid) -> Result<&mut Process, XousError> {
         if pid == 0 {
             println!("Process not found -- PID is 0");
             return Err(XousError::ProcessNotFound);
@@ -186,9 +202,14 @@ impl SystemServices {
         pid as XousPid
     }
 
-    pub fn current_process(&mut self) -> Result<&mut Process, XousError> {
+    pub fn current_process(&self) -> Result<&Process, XousError> {
         let pid = self.current_pid();
         self.get_process(pid)
+    }
+
+    pub fn current_process_mut(&mut self) -> Result<&mut Process, XousError> {
+        let pid = self.current_pid();
+        self.get_process_mut(pid)
     }
 
     /// Create a stack frame in the specified process and jump to it.
@@ -207,7 +228,7 @@ impl SystemServices {
         {
             let current_pid = self.current_pid();
             let mut current = self
-                .get_process(current_pid)
+                .get_process_mut(current_pid)
                 .expect("couldn't get current PID");
             assert_eq!(
                 current.state,
@@ -218,7 +239,7 @@ impl SystemServices {
         }
 
         // Get the new process, and ensure that it is in a state where it's fit to run.
-        let mut process = self.get_process(pid)?;
+        let mut process = self.get_process_mut(pid)?;
         match process.state {
             ProcessState::Ready | ProcessState::Running | ProcessState::Sleeping => (),
             ProcessState::Free => panic!("process was not allocated"),
@@ -230,7 +251,7 @@ impl SystemServices {
         // if necessary.
         process.mapping.activate();
 
-        let context = ProcessContext::current();
+        let mut context = ProcessContext::current();
 
         // Save previous context (if it's not already saved)
         let saved = ProcessContext::saved();
@@ -239,12 +260,14 @@ impl SystemServices {
         }
 
         arch::syscall::invoke(
+            context,
             pid == 1,
             pc as usize,
             context.get_stack(),
             RETURN_FROM_ISR,
             &[irq_no, arg as usize],
         );
+        Ok(())
     }
 
     /// Resume the given process, picking up exactly where it left off.
@@ -259,7 +282,7 @@ impl SystemServices {
         // Save state if the PID has changed
         let context = if pid != previous_pid {
             let context = {
-                let new = self.get_process(pid)?;
+                let new = self.get_process_mut(pid)?;
                 match new.state {
                     ProcessState::Free => return Err(XousError::ProcessNotFound),
                     _ => (),
@@ -284,7 +307,8 @@ impl SystemServices {
 
             // Mark the previous process as ready to run, since we just switched away
             {
-                self.get_process(previous_pid)
+                println!("Marking previous process {} as {:?}", previous_pid, previous_state);
+                self.get_process_mut(previous_pid)
                     .expect("couldn't get previous pid")
                     .state = previous_state;
             }
@@ -301,6 +325,52 @@ impl SystemServices {
             previous.invalidate();
         }
 
-        arch::syscall::resume(pid == 1, &context);
+        Ok(())
+    }
+}
+
+
+/// How many people have checked out the handle object.
+/// This should be replaced by an AtomicUsize when we get
+/// multicore support.
+/// For now, we can get away with this since the memory manager
+/// should only be accessed in an IRQ context.
+static mut SS_HANDLE_COUNT: usize = 0;
+
+pub struct SystemServicesHandle<'a> {
+    manager: &'a mut SystemServices,
+}
+
+/// Wraps the MemoryManager in a safe mutex.  Because of this, accesses
+/// to the Memory Manager should only be made during interrupt contexts.
+impl<'a> SystemServicesHandle<'a> {
+    /// Get the singleton memory manager.
+    pub fn get() -> SystemServicesHandle<'a> {
+        let count = unsafe { SS_HANDLE_COUNT += 1; SS_HANDLE_COUNT - 1 };
+        if count != 0 {
+            panic!("Multiple users of SystemServicesHandle!");
+        }
+        SystemServicesHandle {
+            manager: unsafe { &mut SYSTEM_SERVICES },
+        }
+    }
+}
+
+impl Drop for SystemServicesHandle<'_> {
+    fn drop(&mut self) {
+        unsafe { SS_HANDLE_COUNT -= 1 };
+    }
+}
+
+use core::ops::{Deref, DerefMut};
+impl Deref for SystemServicesHandle<'_> {
+    type Target = SystemServices;
+    fn deref(&self) -> &SystemServices {
+        &*self.manager
+    }
+}
+impl DerefMut for SystemServicesHandle<'_> {
+    fn deref_mut(&mut self) -> &mut SystemServices {
+        &mut *self.manager
     }
 }

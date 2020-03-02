@@ -1,7 +1,7 @@
 use crate::arch;
 use crate::irq::interrupt_claim;
 use crate::mem::MemoryManagerHandle;
-use crate::processtable::{ProcessState, SystemServices};
+use crate::processtable::{ProcessState, SystemServicesHandle};
 use xous::*;
 
 // extern "Rust" {
@@ -134,7 +134,7 @@ use xous::*;
 pub fn handle(call: SysCall) -> XousResult {
     let pid = arch::current_pid();
 
-    // println!("PID{} Syscall: {:?}", pid, call);
+    println!("PID{} Syscall: {:?}", pid, call);
     match call {
         SysCall::MapPhysical(phys, virt, size, req_flags) => {
             let mut mm = MemoryManagerHandle::get();
@@ -149,42 +149,39 @@ pub fn handle(call: SysCall) -> XousResult {
             //     phys as u32, virt as u32, size, req_flags
             // );
             mm.map_range(phys, virt, size, req_flags)
-                .map(|_x| XousResult::Ok)
+                .map(|_x| XousResult::ReturnResult)
                 .unwrap_or_else(|e| XousResult::Error(e))
         }
         SysCall::SwitchTo(pid, context) => {
             if context as usize != 0 {
                 panic!("specifying a context page is not yet supported");
             }
-            let ss = unsafe { SystemServices::get() };
-            XousResult::Error(
-                ss.resume_pid(pid, ProcessState::Ready)
-                    .expect_err("resume pid failed"),
-            )
+            let mut ss = SystemServicesHandle::get();
+            ss.resume_pid(pid, ProcessState::Ready)
+                .map(|_| XousResult::ResumeProcess)
+                .unwrap_or_else(|e| XousResult::Error(e))
         }
         SysCall::ClaimInterrupt(no, callback, arg) => {
             interrupt_claim(no, pid as definitions::XousPid, callback, arg)
-                .map(|_| XousResult::Ok)
+                .map(|_| XousResult::ReturnResult)
                 .unwrap_or_else(|e| XousResult::Error(e))
         }
         SysCall::Yield => {
-            let ss = unsafe { SystemServices::get() };
+            let mut ss = SystemServicesHandle::get();
             let ppid = ss.get_process(pid).expect("Can't get current process").ppid;
             assert_ne!(ppid, 0, "no parent process id");
-            // current_context.registers[10] = 0;
             ss.resume_pid(ppid, ProcessState::Ready)
-                .expect("couldn't resume parent process");
-            XousResult::Error(XousError::ProcessNotFound)
+                .map(|_| XousResult::ResumeProcess)
+                .unwrap_or(XousResult::Error(XousError::ProcessNotFound))
         }
         SysCall::WaitEvent => {
-            let ss = unsafe { SystemServices::get() };
+            let mut ss = SystemServicesHandle::get();
             let process = ss.get_process(pid).expect("Can't get current process");
             let ppid = process.ppid;
             assert_ne!(ppid, 0, "no parent process id");
-            // current_context.registers[10] = 0;
             ss.resume_pid(ppid, ProcessState::Sleeping)
-                .expect("couldn't resume parent process");
-            XousResult::Error(XousError::ProcessNotFound)
+                .map(|_| XousResult::ResumeProcess)
+                .unwrap_or(XousResult::Error(XousError::ProcessNotFound))
         }
         _ => XousResult::Error(XousError::UnhandledSyscall),
     }

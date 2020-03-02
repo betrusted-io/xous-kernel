@@ -24,7 +24,7 @@ mod processtable;
 mod syscall;
 
 use mem::MemoryManagerHandle;
-use processtable::SystemServices;
+use processtable::SystemServicesHandle;
 use xous::*;
 
 #[cfg(not(test))]
@@ -42,11 +42,15 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
     let args = args::KernelArguments::new(arg_offset);
     // Everything needs memory, so the first thing we should do is initialize the memory manager.
     {
-
         let mut memory_manager = MemoryManagerHandle::get();
-        memory_manager.init(rpt_offset, &args).expect("couldn't initialize memory manager");
+        memory_manager
+            .init(rpt_offset, &args)
+            .expect("couldn't initialize memory manager");
     }
-    let system_services = SystemServices::new(init_offset, &args);
+    {
+        let mut system_services = SystemServicesHandle::get();
+        system_services.init(init_offset, &args);
+    }
     arch::init();
 
     // Either map memory using a syscall, or if we're debugging the syscall
@@ -71,6 +75,7 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
             .expect("unable to map serial port");
         println!("KMAIN: Supervisor mode started...");
         debug::SUPERVISOR_UART.enable_rx();
+        println!("Claiming IRQ 3");
         xous::rsyscall(xous::SysCall::ClaimInterrupt(
             3,
             debug::irq as *mut usize,
@@ -86,18 +91,34 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
     }
 
     loop {
-        let mut runnable = false;
-        for (pid_idx, process) in system_services.processes.iter().enumerate() {
-            // If this process is owned by the kernel, and if it can be run, run it.
-            if process.ppid == 1 && process.runnable() {
-                runnable = true;
-                xous::rsyscall(xous::SysCall::SwitchTo((pid_idx + 1) as XousPid, 0 as *const usize))
-                    .expect("couldn't switch to pid");
+        let mut next_pid = None;
+        {
+            arch::irq::disable_all_irqs();
+            {
+                let system_services = SystemServicesHandle::get();
+                for (pid_idx, process) in system_services.processes.iter().enumerate() {
+                    // If this process is owned by the kernel, and if it can be run, run it.
+                    if process.ppid == 1 && process.runnable() {
+                        println!("PID {} is owned by PID 1, and is runnable", pid_idx + 1);
+                        next_pid = Some(pid_idx as XousPid + 1);
+                        break;
+                    }
+                }
             }
+            arch::irq::enable_all_irqs();
         }
-        if !runnable {
-            println!("No runnable tasks found.  Zzz...");
-            unsafe { vexriscv::asm::wfi() };
+
+        match next_pid {
+            Some(pid) => {
+                println!("Attempting to switch to PID {}", pid);
+                xous::rsyscall(xous::SysCall::SwitchTo(pid, 0 as *const usize))
+                    .expect("couldn't switch to pid");
+                ()
+            }
+            None => {
+                println!("No runnable tasks found.  Zzz...");
+                unsafe { vexriscv::asm::wfi() };
+            }
         }
     }
 }

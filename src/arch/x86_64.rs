@@ -24,12 +24,18 @@ pub fn current_pid() -> XousPid {
     unimplemented!();
 }
 
-pub fn init() {
-}
+pub fn init() {}
 
 pub mod syscall {
     use crate::arch::ProcessContext;
-    pub fn invoke(supervisor: bool, pc: usize, sp: usize, ret_addr: usize, args: &[usize]) -> ! {
+    pub fn invoke(
+        context: &mut ProcessContext,
+        supervisor: bool,
+        pc: usize,
+        sp: usize,
+        ret_addr: usize,
+        args: &[usize],
+    ) -> ! {
         unimplemented!();
     }
 
@@ -43,8 +49,8 @@ pub mod syscall {
 }
 
 pub mod mem {
-    use xous::{XousError, XousPid, MemoryFlags};
     use crate::mem::MemoryManager;
+    use xous::{MemoryFlags, XousError, XousPid};
     #[derive(Copy, Clone, Default, PartialEq)]
     pub struct MemoryMapping {}
     impl MemoryMapping {
@@ -63,7 +69,10 @@ pub mod mem {
     }
 
     impl core::fmt::Debug for MemoryMapping {
-        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
+        fn fmt(
+            &self,
+            fmt: &mut core::fmt::Formatter,
+        ) -> core::result::Result<(), core::fmt::Error> {
             write!(fmt, "unimplemented",)
         }
     }
@@ -125,18 +134,37 @@ impl ProcessContext {
     pub fn get_stack(&self) -> usize {
         unimplemented!();
     }
-    pub fn init(&mut self, entrypoint: usize, stack: usize) {
-    }
+    pub fn init(&mut self, entrypoint: usize, stack: usize) {}
 }
 
 #[cfg(test)]
 #[no_mangle]
-pub extern "Rust" fn _xous_syscall_rust(nr: usize, a1: usize, a2: usize, a3: usize, a4: usize, a5: usize, a6: usize, a7: usize, ret: &mut XousResult) {
+pub fn _xous_syscall_rust(
+    nr: usize,
+    a1: usize,
+    a2: usize,
+    a3: usize,
+    a4: usize,
+    a5: usize,
+    a6: usize,
+    a7: usize,
+    ret: &mut XousResult,
+) {
     unimplemented!();
 }
 
 #[cfg(test)]
 #[no_mangle]
-fn _xous_syscall(nr: usize, a1: usize, a2: usize, a3: usize, a4: usize, a5: usize, a6: usize, a7: usize, ret: &mut XousResult) {
+fn _xous_syscall(
+    nr: usize,
+    a1: usize,
+    a2: usize,
+    a3: usize,
+    a4: usize,
+    a5: usize,
+    a6: usize,
+    a7: usize,
+    ret: &mut XousResult,
+) {
     unimplemented!();
 }

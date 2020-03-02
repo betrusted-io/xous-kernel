@@ -1,8 +1,9 @@
-use crate::mem::MemoryManagerHandle;
+use crate::arch::current_pid;
 use crate::arch::mem::MemoryMapping;
-use crate::processtable::{ProcessContext, ProcessState, SystemServices, RETURN_FROM_ISR};
+use crate::mem::MemoryManagerHandle;
+use crate::processtable::{ProcessContext, ProcessState, SystemServicesHandle, RETURN_FROM_ISR};
 use vexriscv::register::{scause, sepc, sie, sstatus, stval, vsim, vsip};
-use xous::{SysCall, XousError, XousPid, XousResult, MemoryFlags};
+use xous::{MemoryFlags, SysCall, XousError, XousPid, XousResult};
 
 extern "Rust" {
     fn xous_syscall_return_rust(result: &XousResult) -> !;
@@ -57,7 +58,6 @@ pub fn trap_handler(
         // We got here because of an `ecall` instruction.  When we return, skip
         // past this instruction.
         crate::arch::ProcessContext::current().sepc += 4;
-
         let call = SysCall::from_args(a0, a1, a2, a3, a4, a5, a6, a7).unwrap_or_else(|_| unsafe {
             xous_syscall_return_rust(&XousResult::Error(XousError::UnhandledSyscall))
         });
@@ -70,9 +70,16 @@ pub fn trap_handler(
 
         println!("Result: {:?}", response);
 
-        // When we return, skip past the `ecall` instruction
-        sepc::write(sepc::read() + 4);
-        unsafe { xous_syscall_return_rust(&response) };
+        // If we're resuming a process that was previously sleeping, restore the context.
+        // Otherwise, keep the context the same but pass the return values in 8 return
+        // registers.
+        if response == XousResult::ResumeProcess {
+            crate::arch::syscall::resume(current_pid() == 1, ProcessContext::current());
+        } else {
+            // When we return, skip past the `ecall` instruction
+            sepc::write(sepc::read() + 4);
+            unsafe { xous_syscall_return_rust(&response) };
+        }
     }
 
     let pid = crate::arch::current_pid();
@@ -80,16 +87,16 @@ pub fn trap_handler(
     let ex = RiscvException::from_regs(sc.bits(), sepc::read(), stval::read());
     if sc.is_exception() {
         if let RiscvException::InstructionPageFault(RETURN_FROM_ISR, _offset) = ex {
-            // Re-enable interrupts now that they're handled
             unsafe {
-                sie::set_sext();
                 if let Some(previous_pid) = PREVIOUS_PID.take() {
                     // println!("Resuming previous pid {}", previous_pid);
-                    SystemServices::get()
+                    SystemServicesHandle::get()
                         .resume_pid(previous_pid, ProcessState::Ready)
-                        .expect_err("resume pid failed");
-                    panic!("dunno what happened");
+                        .expect("unable to resume previous PID");
                 }
+                // Re-enable interrupts now that they're handled
+                enable_all_irqs();
+                crate::arch::syscall::resume(current_pid() == 1, ProcessContext::current());
             }
         }
         // If the CPU tries to store, lok for a "reserved page" and provide
@@ -134,6 +141,7 @@ pub fn trap_handler(
             }
         }
         crate::irq::handle(irqs_pending).expect("Couldn't handle IRQ");
+        crate::arch::syscall::resume(current_pid() == 1, ProcessContext::current());
     }
     loop {}
 }

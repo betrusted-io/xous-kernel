@@ -1,5 +1,5 @@
 use crate::args::KernelArguments;
-use crate::processtable::SystemServices;
+use crate::processtable::SystemServicesHandle;
 use core::fmt;
 use core::mem;
 use core::slice;
@@ -249,7 +249,7 @@ impl MemoryManager {
         size: usize,
         flags: MemoryFlags,
     ) -> Result<MemoryAddress, XousError> {
-        let ss = unsafe { SystemServices::get() };
+        let ss = SystemServicesHandle::get();
         let process = ss.current_process()?;
         let pid = ss.current_pid();
         let phys = phys_ptr as usize;

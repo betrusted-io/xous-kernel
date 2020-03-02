@@ -257,12 +257,13 @@ impl SysCall {
 #[repr(C)]
 #[derive(Debug, PartialEq)]
 pub enum XousResult {
-    Ok,
+    ReturnResult,
     MemoryAddress(*mut usize),
     ResumeResult(usize, usize, usize, usize, usize, usize),
     UnknownResult(usize, usize, usize, usize, usize, usize, usize),
     MaxResult4(usize, usize, usize, usize, usize, usize, usize),
     Error(XousError),
+    ResumeProcess,
 }
 
 pub type SyscallResult = Result<XousResult, XousError>;
