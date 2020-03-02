@@ -396,6 +396,12 @@ pub enum XousResult {
     UnknownResult(usize, usize, usize, usize, usize, usize, usize),
 }
 
+impl From<XousError> for XousResult {
+    fn from(e: XousError) -> Self {
+        XousResult::Error(e)
+    }
+}
+
 pub type SyscallResult = Result<XousResult, XousError>;
 
 extern "Rust" {
