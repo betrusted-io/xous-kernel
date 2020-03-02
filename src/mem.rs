@@ -259,7 +259,7 @@ impl MemoryManager {
         for virt in (virt..(virt+size)).step_by(PAGE_SIZE) {
             mm.reserve_address(self, virt, flags)?;
         }
-        Ok(XousResult::MemoryRange(virt_ptr, size))
+        Ok(XousResult::MemoryRange(virt_ptr as *mut u8, size))
     }
 
     /// Attempt to map the given physical address into the virtual address space

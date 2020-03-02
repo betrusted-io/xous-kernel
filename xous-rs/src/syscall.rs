@@ -389,8 +389,8 @@ impl SysCall {
 pub enum XousResult {
     ReturnResult,
     Error(XousError),
-    MemoryAddress(*mut usize),
-    MemoryRange(*mut usize /* base */, usize /* size */),
+    MemoryAddress(*mut u8),
+    MemoryRange(*mut u8 /* base */, usize /* size */),
     ResumeResult(usize, usize, usize, usize, usize, usize),
     ResumeProcess,
     UnknownResult(usize, usize, usize, usize, usize, usize, usize),
