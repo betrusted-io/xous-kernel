@@ -100,10 +100,7 @@ pub mod mem {
 
     pub fn unmap_page_inner(
         mm: &mut MemoryManager,
-        pid: XousPid,
-        phys: usize,
         virt: usize,
-        req_flags: MemoryFlags,
     ) -> Result<(), XousError> {
         unimplemented!();
     }

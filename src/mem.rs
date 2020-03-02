@@ -363,13 +363,12 @@ impl MemoryManager {
     /// * MemoryInUse - The specified page is already mapped
     pub fn unmap_page(
         &mut self,
-        phys: *mut usize,
         virt: *mut usize,
-        flags: MemoryFlags,
     ) -> Result<(), XousError> {
         let pid = crate::arch::current_pid();
-        self.release_page(phys, pid)?;
-        crate::arch::mem::unmap_page_inner(self, pid, phys as usize, virt as usize, flags)
+        let phys = crate::arch::mem::virt_to_phys(virt as usize)?;
+        self.release_page(phys as *mut usize, pid)?;
+        crate::arch::mem::unmap_page_inner(self, virt as usize)
     }
 
     fn claim_or_release(
