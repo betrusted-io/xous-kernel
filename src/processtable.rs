@@ -250,7 +250,7 @@ impl SystemServices {
         // if necessary.
         process.mapping.activate();
 
-        let mut context = ProcessContext::current();
+        let context = ProcessContext::current();
 
         // Save previous context (if it's not already saved)
         let saved = ProcessContext::saved();
