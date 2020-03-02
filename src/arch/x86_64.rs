@@ -66,6 +66,17 @@ pub mod mem {
         pub fn activate(&self) {
             unimplemented!();
         }
+        pub fn flags_for_address(&self, addr: usize) -> usize {
+            unimplemented!();
+        }
+        pub fn reserve_address(
+            &mut self,
+            mm: &mut MemoryManager,
+            addr: usize,
+            flags: MemoryFlags,
+        ) -> Result<(), XousError> {
+            unimplemented!();
+        }
     }
 
     impl core::fmt::Debug for MemoryMapping {

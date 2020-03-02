@@ -5,8 +5,8 @@ use core::mem;
 use core::slice;
 use core::str;
 
-pub use crate::arch::mem::PAGE_SIZE;
-use xous::{MemoryAddress, MemoryFlags, MemoryType, XousError, XousPid, XousResult};
+pub use crate::arch::mem::{PAGE_SIZE, MemoryMapping};
+use xous::{MemoryAddress, MemoryFlags, XousError, XousPid, XousResult};
 
 #[derive(Debug)]
 enum ClaimOrRelease {
@@ -236,6 +236,32 @@ impl MemoryManager {
         Err(XousError::OutOfMemory)
     }
 
+    /// Reserve the given range without actually allocating memory.
+    /// That way we can overpromise on stack size and heap size without
+    /// needing to actually have pages to back it.
+    pub fn reserve_range(
+        &mut self,
+        virt_ptr: *mut usize,
+        size: usize,
+        flags: MemoryFlags,
+    ) -> Result<XousResult, XousError> {
+        let virt = virt_ptr as usize;
+
+        if virt & 0xfff != 0 {
+            return Err(XousError::BadAlignment);
+        }
+
+        if size & 0xfff != 0 {
+            return Err(XousError::BadAlignment);
+        }
+
+        let mut mm = MemoryMapping::current();
+        for virt in (virt..(virt+size)).step_by(PAGE_SIZE) {
+            mm.reserve_address(self, virt, flags)?;
+        }
+        Ok(XousResult::MemoryRange(virt_ptr, size))
+    }
+
     /// Attempt to map the given physical address into the virtual address space
     /// of this process.
     ///
@@ -250,7 +276,6 @@ impl MemoryManager {
         flags: MemoryFlags,
     ) -> Result<MemoryAddress, XousError> {
         let ss = SystemServicesHandle::get();
-        let process = ss.current_process()?;
         let pid = ss.current_pid();
         let phys = phys_ptr as usize;
         let virt = virt_ptr as usize;
@@ -262,14 +287,14 @@ impl MemoryManager {
 
         let mut error = None;
         for phys in (phys..(phys + size)).step_by(PAGE_SIZE) {
-            if let Err(err) = self.claim_page(phys_ptr, pid) {
+            if let Err(err) = self.claim_page(phys as *mut usize, pid) {
                 error = Some(err);
                 break;
             }
         }
         if let Some(err) = error {
             for phys in (phys..(phys + size)).step_by(PAGE_SIZE) {
-                self.release_page(phys_ptr, pid).ok();
+                self.release_page(phys as *mut usize, pid).ok();
             }
             return Err(err);
         }
@@ -285,7 +310,7 @@ impl MemoryManager {
 
         if let Some(err) = error {
             for phys in (phys..(phys + size)).step_by(PAGE_SIZE) {
-                self.release_page(phys_ptr, pid).ok();
+                self.release_page(phys as *mut usize, pid).ok();
             }
             return Err(err);
         }

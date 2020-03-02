@@ -1,7 +1,7 @@
 use crate::mem::MemoryManager;
 use core::fmt;
 use vexriscv::register::satp;
-use xous::{XousError, XousPid, MemoryFlags};
+use xous::{MemoryFlags, XousError, XousPid};
 
 pub const DEFAULT_STACK_TOP: usize = 0xffff_0000;
 pub const DEFAULT_HEAP_BASE: usize = 0x4000_0000;
@@ -49,6 +49,20 @@ impl core::fmt::Debug for MemoryMapping {
     }
 }
 
+fn translate_flags(req_flags: MemoryFlags) -> MMUFlags {
+    let mut flags = MMUFlags::NONE;
+    if req_flags & xous::MemoryFlags::R == xous::MemoryFlags::R {
+        flags |= MMUFlags::R;
+    }
+    if req_flags & xous::MemoryFlags::W == xous::MemoryFlags::W {
+        flags |= MMUFlags::W;
+    }
+    if req_flags & xous::MemoryFlags::X == xous::MemoryFlags::X {
+        flags |= MMUFlags::X;
+    }
+    flags
+}
+
 /// Controls MMU configurations.
 impl MemoryMapping {
     /// Create a new MemoryMapping with the given SATP value.
@@ -84,7 +98,7 @@ impl MemoryMapping {
     }
 
     /// Get the flags for a given address, or `0` if none is set.
-    pub fn current_mapping(&self, addr: usize) -> usize {
+    pub fn flags_for_address(&self, addr: usize) -> usize {
         let vpn1 = (addr >> 22) & ((1 << 10) - 1);
         let vpn0 = (addr >> 12) & ((1 << 10) - 1);
 
@@ -95,7 +109,57 @@ impl MemoryMapping {
         }
         let l0pt_virt = PAGE_TABLE_OFFSET + vpn1 * PAGE_SIZE;
         let ref mut l0_pt = unsafe { &mut (*(l0pt_virt as *mut LeafPageTable)) };
-        l0_pt.entries[vpn0 as usize]
+        l0_pt.entries[vpn0]
+    }
+
+    pub fn reserve_address(
+        &mut self,
+        mm: &mut MemoryManager,
+        addr: usize,
+        flags: MemoryFlags,
+    ) -> Result<(), XousError> {
+        let vpn1 = (addr >> 22) & ((1 << 10) - 1);
+        let vpn0 = (addr >> 12) & ((1 << 10) - 1);
+
+        let l1_pt = unsafe { &mut (*(PAGE_TABLE_ROOT_OFFSET as *mut RootPageTable)) };
+        let l0pt_virt = PAGE_TABLE_OFFSET + vpn1 * PAGE_SIZE;
+
+        // Allocate a new level 1 pagetable entry if one doesn't exist.
+        if l1_pt.entries[vpn1] & MMUFlags::VALID.bits() == 0 {
+            let pid = crate::arch::current_pid();
+            // Allocate a fresh page
+            let l0pt_phys = mm.alloc_page(pid)?;
+
+            // Mark this entry as a leaf node (WRX as 0), and indicate
+            // it is a valid page by setting "V".
+            l1_pt.entries[vpn1] = ((l0pt_phys >> 12) << 10) | MMUFlags::VALID.bits();
+            unsafe { flush_mmu() };
+
+            // Map the new physical page to the virtual page, so we can access it.
+            map_page_inner(
+                mm,
+                pid,
+                l0pt_phys,
+                l0pt_virt,
+                MemoryFlags::W | MemoryFlags::R,
+            )?;
+
+            // Zero-out the new page
+            let page_addr = l0pt_virt as *mut usize;
+            unsafe {
+                for i in 0..PAGE_SIZE / core::mem::size_of::<usize>() {
+                    *page_addr.add(i) = 0;
+                }
+            }
+        }
+
+        let ref mut l0_pt = unsafe { &mut (*(l0pt_virt as *mut LeafPageTable)) };
+        let current_mapping = l0_pt.entries[vpn0];
+        if current_mapping & 1 == 1 {
+            return Ok(());
+        }
+        l0_pt.entries[vpn0] = translate_flags(flags).bits();
+        Ok(())
     }
 }
 
@@ -168,16 +232,7 @@ pub fn map_page_inner(
     let vpn0 = (virt >> 12) & ((1 << 10) - 1);
     let vpo = (virt >> 0) & ((1 << 12) - 1);
 
-    let mut flags = MMUFlags::NONE;
-    if req_flags & xous::MemoryFlags::R == xous::MemoryFlags::R {
-        flags |= MMUFlags::R;
-    }
-    if req_flags & xous::MemoryFlags::W == xous::MemoryFlags::W {
-        flags |= MMUFlags::W;
-    }
-    if req_flags & xous::MemoryFlags::X == xous::MemoryFlags::X {
-        flags |= MMUFlags::X;
-    }
+    let mut flags = translate_flags(req_flags);
     // The kernel runs in Supervisor mode, and therefore always needs
     // exclusive access to this memory.
     // Additionally, any address below the user area must be accessible
@@ -214,7 +269,13 @@ pub fn map_page_inner(
         unsafe { flush_mmu() };
 
         // Map the new physical page to the virtual page, so we can access it.
-        map_page_inner(mm, pid, l0pt_phys, l0pt_virt, MemoryFlags::W | MemoryFlags::R)?;
+        map_page_inner(
+            mm,
+            pid,
+            l0pt_phys,
+            l0pt_virt,
+            MemoryFlags::W | MemoryFlags::R,
+        )?;
 
         // Zero-out the new page
         let page_addr = l0pt_virt as *mut usize;
@@ -227,7 +288,7 @@ pub fn map_page_inner(
 
     // Ensure the entry hasn't already been mapped.
     if l0_pt.entries[vpn0 as usize] & 1 != 0 {
-        println!("Page {:08x} already allocated!", virt);
+        // println!("Page {:08x} already allocated!", virt);
     }
     l0_pt.entries[vpn0 as usize] =
         (ppn1 << 20) | (ppn0 << 10) | (flags | MMUFlags::VALID | MMUFlags::D | MMUFlags::A).bits();

@@ -1,12 +1,14 @@
 use crate::arch;
-use crate::args::KernelArguments;
-use crate::definitions::{XousError, XousPid};
-use core::slice;
-// use vexriscv::register::{satp, sepc, sstatus};
 use crate::arch::mem::MemoryMapping;
 pub use crate::arch::ProcessContext;
+use crate::args::KernelArguments;
+use crate::mem::MemoryManagerHandle;
+use core::slice;
+use xous::{MemoryFlags, XousError, XousPid};
 
 const MAX_PROCESS_COUNT: usize = 254;
+const DEFAULT_STACK_SIZE: usize = 131072;
+pub use crate::arch::mem::DEFAULT_STACK_TOP;
 pub const RETURN_FROM_ISR: usize = 0x0080_2000;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -16,7 +18,7 @@ pub enum ProcessState {
 
     /// This is a brand-new process that hasn't been run
     /// yet, and needs its stack and entrypoint set up.
-    Setup(usize /* entrypoint */, usize /* stack */),
+    Setup(usize /* entrypoint */, usize /* stack */, usize /* stack size */),
 
     /// This process is able to be run
     Ready,
@@ -66,7 +68,7 @@ pub struct Process {
 impl Process {
     pub fn runnable(&self) -> bool {
         match self.state {
-            ProcessState::Setup(_, _) | ProcessState::Ready => true,
+            ProcessState::Setup(_, _, _) | ProcessState::Ready => true,
             _ => false,
         }
     }
@@ -123,7 +125,6 @@ impl SystemServices {
     /// These arguments decide where the memory spaces are located, as well as where
     /// the stack and program counter should initially go.
     pub fn init(&mut self, base: *const u32, args: &KernelArguments) {
-
         // Look through the kernel arguments and create a new process for each.
         let init_offsets = {
             let mut init_count = 1;
@@ -145,9 +146,7 @@ impl SystemServices {
             // init.satp, pid, init.satp << 10, init.entrypoint, init.sp, pid-1);
             unsafe { process.mapping.from_raw(init.satp) };
             process.ppid = if pid == 1 { 0 } else { 1 };
-            process.state = ProcessState::Setup(init.entrypoint, init.sp);
-
-            // Mark the stack as "unallocated-but-free"
+            process.state = ProcessState::Setup(init.entrypoint, init.sp, DEFAULT_STACK_SIZE);
         }
     }
 
@@ -243,7 +242,7 @@ impl SystemServices {
         match process.state {
             ProcessState::Ready | ProcessState::Running | ProcessState::Sleeping => (),
             ProcessState::Free => panic!("process was not allocated"),
-            ProcessState::Setup(_, _) => panic!("process hasn't been set up yet"),
+            ProcessState::Setup(_, _, _) => panic!("process hasn't been set up yet"),
         }
         process.state = ProcessState::Running;
 
@@ -294,8 +293,19 @@ impl SystemServices {
 
                 // Set up the new process, if necessary
                 match new.state {
-                    ProcessState::Setup(entrypoint, stack) => {
+                    ProcessState::Setup(entrypoint, stack, stack_size) => {
                         context.init(entrypoint, stack);
+                        // Mark the stack as "unallocated-but-free"
+                        let init_sp = stack & !0xfff;
+                        println!("Going to reserve the range");
+                        let mut memory_manager = MemoryManagerHandle::get();
+                        memory_manager
+                            .reserve_range(
+                                (init_sp - stack_size) as *mut usize,
+                                stack_size + 4096,
+                                MemoryFlags::R | MemoryFlags::W,
+                            )
+                            .expect("couldn't reserve stack");
                     }
                     ProcessState::Free => panic!("process was suddenly Free"),
                     ProcessState::Ready | ProcessState::Sleeping => (),
@@ -307,7 +317,10 @@ impl SystemServices {
 
             // Mark the previous process as ready to run, since we just switched away
             {
-                println!("Marking previous process {} as {:?}", previous_pid, previous_state);
+                println!(
+                    "Marking previous process {} as {:?}",
+                    previous_pid, previous_state
+                );
                 self.get_process_mut(previous_pid)
                     .expect("couldn't get previous pid")
                     .state = previous_state;
@@ -329,7 +342,6 @@ impl SystemServices {
     }
 }
 
-
 /// How many people have checked out the handle object.
 /// This should be replaced by an AtomicUsize when we get
 /// multicore support.
@@ -346,7 +358,10 @@ pub struct SystemServicesHandle<'a> {
 impl<'a> SystemServicesHandle<'a> {
     /// Get the singleton memory manager.
     pub fn get() -> SystemServicesHandle<'a> {
-        let count = unsafe { SS_HANDLE_COUNT += 1; SS_HANDLE_COUNT - 1 };
+        let count = unsafe {
+            SS_HANDLE_COUNT += 1;
+            SS_HANDLE_COUNT - 1
+        };
         if count != 0 {
             panic!("Multiple users of SystemServicesHandle!");
         }

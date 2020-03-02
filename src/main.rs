@@ -75,7 +75,7 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
             .expect("unable to map serial port");
         println!("KMAIN: Supervisor mode started...");
         debug::SUPERVISOR_UART.enable_rx();
-        println!("Claiming IRQ 3");
+        println!("Claiming IRQ 3 via syscall...");
         xous::rsyscall(xous::SysCall::ClaimInterrupt(
             3,
             debug::irq as *mut usize,

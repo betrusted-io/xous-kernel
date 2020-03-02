@@ -7,7 +7,6 @@ use xous::{MemoryFlags, SysCall, XousError, XousPid, XousResult};
 
 extern "Rust" {
     fn xous_syscall_return_rust(result: &XousResult) -> !;
-    fn xous_syscall_resume_context(context: ProcessContext) -> !;
 }
 
 /// Disable external interrupts
@@ -31,6 +30,33 @@ pub fn disable_irq(irq_no: usize) {
 }
 
 static mut PREVIOUS_PID: Option<XousPid> = None;
+
+fn map_page_and_return(pc: usize, addr: usize, pid: XousPid, flags: MemoryFlags) {
+    assert!(
+        pid > 1,
+        "kernel store page fault (pc: {:08x}  target: {:08x})",
+        pc,
+        addr
+    );
+
+    {
+        let mut mm = MemoryManagerHandle::get();
+        let new_page = mm.alloc_page(pid).expect("Couldn't allocate new page");
+        println!(
+            "Allocating new physical page {:08x} @ {:08x}",
+            new_page,
+            (addr & !4095)
+        );
+        mm.map_range(
+            new_page as *mut usize,
+            (addr & !4095) as *mut usize,
+            4096,
+            flags,
+        )
+        .expect("Couldn't map new stack");
+    }
+    crate::arch::syscall::resume(current_pid() == 1, ProcessContext::current());
+}
 
 #[no_mangle]
 pub fn trap_handler(
@@ -101,32 +127,17 @@ pub fn trap_handler(
         }
         // If the CPU tries to store, lok for a "reserved page" and provide
         // it with one if necessary.
-        if let RiscvException::StorePageFault(pc, sp) = ex {
-            assert!(
-                pid > 1,
-                "kernel store page fault (pc: {:08x}  target: {:08x})",
-                pc,
-                sp
-            );
-            let mapping = MemoryMapping::current();
-            if mapping.current_mapping(sp) & 3 == 2 {
-                let mut mm = MemoryManagerHandle::get();
-                let new_page = mm.alloc_page(pid).expect("Couldn't allocate new page");
-                println!(
-                    "Allocating new physical page {:08x} @ {:08x}",
-                    new_page,
-                    (sp & !4095)
-                );
-                mm.map_range(
-                    new_page as *mut usize,
-                    (sp & !4095) as *mut usize,
-                    4096,
-                    MemoryFlags::W | MemoryFlags::R,
-                )
-                .expect("Couldn't map new stack");
-                // println!("Resuming context");
-                crate::arch::syscall::resume(current_pid() == 1, ProcessContext::current());
+        match ex {
+            RiscvException::StorePageFault(pc, sp) | RiscvException::LoadPageFault(pc, sp) => {
+                let mapping = MemoryMapping::current();
+                let flags = mapping.flags_for_address(sp) & 7;
+                if flags & 1 == 0 && flags != 0 {
+                    let flags = MemoryFlags::from_bits(flags).expect("couldn't return flags");
+                    map_page_and_return(pc, sp, pid, flags);
+                }
+                println!("Flags don't match ({:08x})", flags);
             }
+            _ => (),
         }
         println!("CPU Exception on PID {}: {}", pid, ex);
         loop {}
@@ -142,5 +153,4 @@ pub fn trap_handler(
         crate::irq::handle(irqs_pending).expect("Couldn't handle IRQ");
         crate::arch::syscall::resume(current_pid() == 1, ProcessContext::current());
     }
-    loop {}
 }

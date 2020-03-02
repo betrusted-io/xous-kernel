@@ -13,7 +13,6 @@ pub fn invoke(
     ret_addr: usize,
     args: &[usize],
 ) {
-    let mut regs = [0; 31];
     set_supervisor(supervisor);
     context.registers[0] = ret_addr;
     context.registers[1] = sp;
