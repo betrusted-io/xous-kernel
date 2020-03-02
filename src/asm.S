@@ -200,62 +200,6 @@ xous_syscall_return_rust:
     LOAD        x2, 1*REGBYTES(sp)
     sret
 
-.global xous_syscall_resume_context
-xous_syscall_resume_context:
-
-    move        sp, a0
-    LOAD        t0, 1*REGBYTES(sp)
-    csrw        sscratch, t0
-
-    // Save SATP as well
-    LOAD        t0, 31*REGBYTES(sp)
-    csrw        satp, t0
-    sfence.vma
-
-    // Save SSTATUS as well
-    LOAD        t0, 32*REGBYTES(sp)
-    csrw        sstatus, t0
-
-    // Save SEPC as well
-    LOAD        t0, 33*REGBYTES(sp)
-    csrw        sepc, t0
-
-    LOAD        x1, 0*REGBYTES(sp)
-    // Skip SP for now
-    LOAD        x3, 2*REGBYTES(sp)
-    LOAD        x4, 3*REGBYTES(sp)
-    LOAD        x5, 4*REGBYTES(sp)
-    LOAD        x6, 5*REGBYTES(sp)
-    LOAD        x7, 6*REGBYTES(sp)
-    LOAD        x8, 7*REGBYTES(sp)
-    LOAD        x9, 8*REGBYTES(sp)
-    LOAD        x10, 9*REGBYTES(sp)
-    LOAD        x11, 10*REGBYTES(sp)
-    LOAD        x12, 11*REGBYTES(sp)
-    LOAD        x13, 12*REGBYTES(sp)
-    LOAD        x14, 13*REGBYTES(sp)
-    LOAD        x15, 14*REGBYTES(sp)
-    LOAD        x16, 15*REGBYTES(sp)
-    LOAD        x17, 16*REGBYTES(sp)
-    LOAD        x18, 17*REGBYTES(sp)
-    LOAD        x19, 18*REGBYTES(sp)
-    LOAD        x20, 19*REGBYTES(sp)
-    LOAD        x21, 20*REGBYTES(sp)
-    LOAD        x22, 21*REGBYTES(sp)
-    LOAD        x23, 22*REGBYTES(sp)
-    LOAD        x24, 23*REGBYTES(sp)
-    LOAD        x25, 24*REGBYTES(sp)
-    LOAD        x26, 25*REGBYTES(sp)
-    LOAD        x27, 26*REGBYTES(sp)
-    LOAD        x28, 27*REGBYTES(sp)
-    LOAD        x29, 28*REGBYTES(sp)
-    LOAD        x30, 29*REGBYTES(sp)
-    LOAD        x31, 30*REGBYTES(sp)
-
-    // Save SP
-    csrr        t0, sscratch
-    LOAD        x2, 1*REGBYTES(sp)
-    sret
 
 .global flush_mmu
 flush_mmu:

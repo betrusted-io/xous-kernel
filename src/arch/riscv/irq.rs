@@ -125,8 +125,7 @@ pub fn trap_handler(
                 )
                 .expect("Couldn't map new stack");
                 // println!("Resuming context");
-                let cc = crate::arch::ProcessContext::current();
-                unsafe { xous_syscall_resume_context(*cc) };
+                crate::arch::syscall::resume(current_pid() == 1, ProcessContext::current());
             }
         }
         println!("CPU Exception on PID {}: {}", pid, ex);
