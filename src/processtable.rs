@@ -9,6 +9,9 @@ use xous::{MemoryFlags, XousError, XousPid};
 const MAX_PROCESS_COUNT: usize = 254;
 const DEFAULT_STACK_SIZE: usize = 131072;
 pub use crate::arch::mem::DEFAULT_STACK_TOP;
+
+/// This is the address a program will jump to in order
+/// to return from an ISR.
 pub const RETURN_FROM_ISR: usize = 0x0080_2000;
 
 #[derive(Debug, Copy, Clone, PartialEq)]

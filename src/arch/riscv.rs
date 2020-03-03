@@ -21,8 +21,15 @@ pub fn init() {
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
+/// Everything required to keep track of a single thread of execution.
 pub struct ProcessContext {
+    /// Storage for all RISC-V registers, minus $zero
     pub registers: [usize; 31],
+
+    /// The return address.  Note that if this context was created
+    /// because of an `ecall` instruction, you will need to add `4`
+    /// to this before returning, to prevent that instruction from
+    /// getting executed again.
     pub sepc: usize,
 }
 
