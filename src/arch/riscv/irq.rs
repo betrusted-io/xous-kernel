@@ -6,7 +6,7 @@ use vexriscv::register::{scause, sepc, sie, sstatus, stval, vsim, vsip};
 use xous::{SysCall, XousError, XousPid, XousResult};
 
 extern "Rust" {
-    fn xous_syscall_return_rust(result: &XousResult) -> !;
+    fn _xous_syscall_return_result(result: &XousResult) -> !;
 }
 
 extern "C" {
@@ -86,15 +86,14 @@ pub fn trap_handler(
 
     if (sc.bits() == 9) || (sc.bits() == 8) {
         // We got here because of an `ecall` instruction.  When we return, skip
-        // past this instruction.
+        // past this instruction.  If this is a call such as `SwitchTo`, then we
+        // will want to adjust the return value of the current process prior to
+        // performing the switch in order to avoid constantly executing the same
+        // instruction.
         crate::arch::ProcessContext::current().sepc += 4;
         let call = SysCall::from_args(a0, a1, a2, a3, a4, a5, a6, a7).unwrap_or_else(|_| unsafe {
-            xous_syscall_return_rust(&XousResult::Error(XousError::UnhandledSyscall))
+            _xous_syscall_return_result(&XousResult::Error(XousError::UnhandledSyscall))
         });
-        // println!(
-        //     "    Syscall {:08x}: {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}, {:08x}",
-        //     a0, a1, a2, a3, a4, a5, a6, a7
-        // );
 
         let response = crate::syscall::handle(call);
 
@@ -106,9 +105,8 @@ pub fn trap_handler(
         if response == XousResult::ResumeProcess {
             crate::arch::syscall::resume(current_pid() == 1, ProcessContext::current());
         } else {
-            // When we return, skip past the `ecall` instruction
-            sepc::write(sepc::read() + 4);
-            unsafe { xous_syscall_return_rust(&response) };
+            println!("Returning to address {:08x}", ProcessContext::current().sepc);
+            unsafe { _xous_syscall_return_result(&response) };
         }
     }
 

@@ -52,8 +52,9 @@ _start:
 /*
     Trap entry point (_start_trap)
 
-    Saves caller saved registers ra, t0..6, a0..7, calls _start_trap_rust,
-    restores caller saved registers and then returns.
+    Saves all process context into a structure that is
+    mapped to each thread at 0x00801000.  Return happens
+    elsewhere.
 */
 .section .trap, "ax"
 .global _start_trap
@@ -94,28 +95,29 @@ _start_trap:
     STORE       x30, 29*REGBYTES(sp)
     STORE       x31, 30*REGBYTES(sp)
 
-    // Save SATP as well
-    csrr        t0, satp
+    // Save SEPC
+    csrr        t0, sepc
     STORE       t0, 31*REGBYTES(sp)
 
-    // Save SSTATUS as well
-    csrr        t0, sstatus
-    STORE       t0, 32*REGBYTES(sp)
-
-    // Save SEPC as well
-    csrr        t0, sepc
-    STORE       t0, 33*REGBYTES(sp)
-
-    // Save SP
+    // Finally, save SP
     csrr        t0, sscratch
     STORE       t0, 1*REGBYTES(sp)
 
-    // Restore a default SATP
+    // Restore a default stack pointer
     li          sp, 0x003ffffc
+
+    // Note that registers $a0-$a7 still contain the arguments
     j           _start_trap_rust
 
-.global return_to_user
-return_to_user:
+
+/*
+    Resume a context (_xous_resume_context)
+
+    Restores all registers from a ProcessContext passed in $a0.
+    Note that the SEPC and SSTATUS should be set already.
+*/
+.global _xous_resume_context
+_xous_resume_context:
     move        sp, a0
 
     LOAD        x1, 0*REGBYTES(sp)
@@ -154,8 +156,21 @@ return_to_user:
     LOAD        x2, 1*REGBYTES(sp)
     sret
 
-.global xous_syscall_return_rust
-xous_syscall_return_rust:
+
+/*
+    Return from a syscall with arguments (_xous_syscall_return_result)
+
+    Xous passes arguments in $a0-$a7, however the RISC-V calling convention
+    states that only $a0 and $a1 are used.  To work around this, we pass
+    a pointer to a 32-byte structure in $a0, and this function moves that
+    into the registers.  It then restores the context from other registers.
+*/
+.global _xous_syscall_return_result
+_xous_syscall_return_result:
+    // Skip past the 4-byte `ecall` instruction
+    csrr        t0, sepc
+    addi        t0, t0, 4
+    csrw        sepc, t0
 
     LOAD        a7, 7*REGBYTES(a0)
     LOAD        a6, 6*REGBYTES(a0)

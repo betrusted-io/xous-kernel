@@ -23,15 +23,18 @@ pub fn init() {
 #[derive(Copy, Clone, Debug)]
 pub struct ProcessContext {
     pub registers: [usize; 31],
-    pub satp: usize,
-    pub sstatus: usize,
     pub sepc: usize,
 }
 
 impl ProcessContext {
+    /// Returns the current process context, which is stored at the same address
+    /// in every process.
     pub fn current() -> &'static mut ProcessContext {
         unsafe { &mut *(0x00801000 as *mut ProcessContext) }
     }
+
+    /// Returns the saved process context, which is stored just above the
+    /// current context.
     pub fn saved() -> &'static mut ProcessContext {
         unsafe {
             &mut *((0x00801000 + core::mem::size_of::<ProcessContext>()) as *mut ProcessContext)
@@ -39,20 +42,23 @@ impl ProcessContext {
     }
 
     /// Determine whether a process context is valid.
-    /// Contexts are valid when the `SATP.VALID` bit is `1`.
+    /// Contexts are valid when they have a place to return to --
+    /// i.e. `SEPC` is nonzero
     pub fn valid(&self) -> bool {
-        (self.satp & 0x80000000) == 0x80000000
+        self.sepc != 0
     }
 
-    /// Invalidate a context by setting its `SATP.VALID` bit to 0.
+    /// Invalidate a context by removing its return address
     pub fn invalidate(&mut self) {
-        self.satp = 0;
+        self.sepc = 0;
     }
 
     pub fn get_stack(&self) -> usize {
         self.registers[1]
     }
 
+    /// Initialize this process context with the given entrypoint and stack
+    /// addresses.
     pub fn init(&mut self, entrypoint: usize, stack: usize) {
         self.sepc = entrypoint;
         self.registers[1] = stack;

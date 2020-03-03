@@ -2,7 +2,7 @@ use crate::processtable::ProcessContext;
 use vexriscv::register::{sepc, sstatus};
 
 extern "C" {
-    fn return_to_user(regs: *const usize) -> !;
+    fn _xous_resume_context(regs: *const usize) -> !;
 }
 
 pub fn invoke(
@@ -32,15 +32,14 @@ fn set_supervisor(supervisor: bool) {
 pub fn resume(supervisor: bool, context: &ProcessContext) -> ! {
     sepc::write(context.sepc);
 
-    // Return to user mode
+    // Return to the appropriate CPU mode
     set_supervisor(supervisor);
 
     println!(
-        "Switching to PID {}, SP: {:08x}, PC: {:08x}, SATP: {:08x}",
-        (context.satp >> 22) & ((1 << 9) - 1),
+        "Switching to PID {}, SP: {:08x}, PC: {:08x}",
+        crate::arch::current_pid(),
         context.registers[1],
         context.sepc,
-        context.satp
     );
-    unsafe { return_to_user(context.registers.as_ptr()) };
+    unsafe { _xous_resume_context(context.registers.as_ptr()) };
 }
