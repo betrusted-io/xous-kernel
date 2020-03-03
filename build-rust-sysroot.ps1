@@ -2,6 +2,8 @@ $rust_root=(Get-Location).ToString() + "\rust"
 $env:RUSTC_BOOTSTRAP=1
 $env:RUST_TARGET_PATH="$rust_root\xous-sysroot"
 $env:RUSTFLAGS="--sysroot $rust_root\xous-sysroot"
+$env:CC="riscv64-unknown-elf-gcc"
+$env:AR="riscv64-unknown-elf-ar"
 
 # Get the current rust tag (currently 1.41.0)
 $rust_tag=(rustc -Vv | Select-String "release: ").ToString().Replace("release: ", "")
@@ -9,7 +11,7 @@ $rust_tag=(rustc -Vv | Select-String "release: ").ToString().Replace("release: "
 # Clone the latest Rust source
 # git stash
 Write-Output "Checking out Rust $rust_tag-xous..."
-git clone --recursive 'git@github.com:xous-os/rust.git' rust
+git clone 'git@github.com:xous-os/rust.git' rust
 git checkout $rust_tag-xous
 git submodule init
 git submodule sync
