@@ -89,9 +89,9 @@ impl MemoryMapping {
     }
 
     /// Set this mapping as the systemwide mapping.
-    /// **Note:** This should only be called from the kernel, which
-    /// should be mapped into every possible address space.  As such,
-    /// this will only have an observable effect once code returns
+    /// **Note:** This should only be called from an interrupt in the
+    /// kernel, which should be mapped into every possible address space.
+    /// As such, this will only have an observable effect once code returns
     /// to userspace.
     pub fn activate(&self) {
         satp::write(self.satp);
@@ -110,6 +110,39 @@ impl MemoryMapping {
     //     let l0pt_virt = PAGE_TABLE_OFFSET + vpn1 * PAGE_SIZE;
     //     let ref mut l0_pt = unsafe { &mut (*(l0pt_virt as *mut LeafPageTable)) };
     //     l0_pt.entries[vpn0]
+    // }
+
+    // pub fn print_map(&self) {
+    //     println!("Memory Maps:");
+    //     let l1_pt = unsafe { &mut (*(PAGE_TABLE_ROOT_OFFSET as *mut RootPageTable)) };
+    //     for (i, l1_entry) in l1_pt.entries.iter().enumerate() {
+    //         if *l1_entry == 0 {
+    //             continue;
+    //         }
+    //         let superpage_addr = i as u32 * (1 << 22);
+    //         println!(
+    //             "    {:4} Superpage for {:08x} @ {:08x} (flags: {:?})",
+    //             i,
+    //             superpage_addr,
+    //             (*l1_entry >> 10) << 12,
+    //             MMUFlags::from_bits(l1_entry & 0xff).unwrap()
+    //         );
+    //         // let l0_pt_addr = ((l1_entry >> 10) << 12) as *const u32;
+    //         let l0_pt = unsafe { &mut (*((PAGE_TABLE_OFFSET + i * 4096) as *mut LeafPageTable)) };
+    //         for (j, l0_entry) in l0_pt.entries.iter().enumerate() {
+    //             if *l0_entry == 0 {
+    //                 continue;
+    //             }
+    //             let page_addr = j as u32 * (1 << 12);
+    //             println!(
+    //                 "        {:4} {:08x} -> {:08x} (flags: {:?})",
+    //                 j,
+    //                 superpage_addr + page_addr,
+    //                 (*l0_entry >> 10) << 12,
+    //                 MMUFlags::from_bits(l0_entry & 0xff).unwrap()
+    //             );
+    //         }
+    //     }
     // }
 
     /// Get the pagetable entry for a given address, or `0` if none is set.

@@ -150,39 +150,6 @@ impl MemoryManager {
         Ok(())
     }
 
-    // pub fn print_map(&self) {
-    //     println!("Memory Maps:");
-    //     let l1_pt = unsafe { &mut (*(PAGE_TABLE_ROOT_OFFSET as *mut RootPageTable)) };
-    //     for (i, l1_entry) in l1_pt.entries.iter().enumerate() {
-    //         if *l1_entry == 0 {
-    //             continue;
-    //         }
-    //         let superpage_addr = i as u32 * (1 << 22);
-    //         println!(
-    //             "    {:4} Superpage for {:08x} @ {:08x} (flags: {:?})",
-    //             i,
-    //             superpage_addr,
-    //             (*l1_entry >> 10) << 12,
-    //             MMUFlags::from_bits(l1_entry & 0xff).unwrap()
-    //         );
-    //         // let l0_pt_addr = ((l1_entry >> 10) << 12) as *const u32;
-    //         let l0_pt = unsafe { &mut (*((PAGE_TABLE_OFFSET + i * 4096) as *mut LeafPageTable)) };
-    //         for (j, l0_entry) in l0_pt.entries.iter().enumerate() {
-    //             if *l0_entry == 0 {
-    //                 continue;
-    //             }
-    //             let page_addr = j as u32 * (1 << 12);
-    //             println!(
-    //                 "        {:4} {:08x} -> {:08x} (flags: {:?})",
-    //                 j,
-    //                 superpage_addr + page_addr,
-    //                 (*l0_entry >> 10) << 12,
-    //                 MMUFlags::from_bits(l0_entry & 0xff).unwrap()
-    //             );
-    //         }
-    //     }
-    // }
-
     // pub fn print_ownership(&self) {
     //     println!("Ownership ({} bytes in all):", self.allocations.len());
 
