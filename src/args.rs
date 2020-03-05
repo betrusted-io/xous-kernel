@@ -10,6 +10,8 @@ macro_rules! make_type {
     }};
 }
 
+static mut KERNEL_ARGUMENTS_BASE: *const u32 = 0 as *const u32;
+
 pub struct KernelArguments {
     pub base: *const u32,
 }
@@ -21,8 +23,12 @@ pub struct KernelArgumentsIterator {
 }
 
 impl KernelArguments {
-    pub fn new(base: *const u32) -> Self {
-        KernelArguments { base }
+    pub fn get() -> Self {
+        KernelArguments { base: unsafe { KERNEL_ARGUMENTS_BASE } }
+    }
+
+    pub unsafe fn init(base: *const u32) {
+        KERNEL_ARGUMENTS_BASE = base;
     }
 
     pub fn iter(&self) -> KernelArgumentsIterator {
