@@ -18,35 +18,24 @@
 */
 
 
-/* Make sure there is an abort when linking */
-.section .text.init, "ax"
-.globl abort
-abort:
-    j abort
-
 .section .text.init, "ax"
 
 .global _start
 
 _start:
-    .cfi_startproc
-    .cfi_undefined ra
-
-    .option push
-    .option norelax
-    la gp, __global_pointer$
-    .option pop
-
-    // Set frame pointer
-    add s0, sp, zero
-
-    // Set trap handler
+    // Set trap handler, which will be called
+    // on interrupts and cpu faults
     la t0, _start_trap
     csrw stvec, t0
 
-    jal zero, _start_rust
+    // Jump to a program to initialize global variables.
+    // Note that at this point, the .data section should
+    // have already been set up by the loader.
+    jal x1, init
 
-    .cfi_endproc
+    // Call the main function.  This function diverges, so
+    // shouldn't ever return.
+    j main
 
 
 /*

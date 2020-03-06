@@ -5,7 +5,7 @@ use core::mem;
 use core::slice;
 use core::str;
 
-pub use crate::arch::mem::{PAGE_SIZE, MemoryMapping};
+pub use crate::arch::mem::{MemoryMapping, PAGE_SIZE};
 use xous::{MemoryAddress, MemoryFlags, XousError, XousPid, XousResult};
 
 #[derive(Debug)]
@@ -78,7 +78,10 @@ pub struct MemoryManagerHandle<'a> {
 impl<'a> MemoryManagerHandle<'a> {
     /// Get the singleton memory manager.
     pub fn get() -> MemoryManagerHandle<'a> {
-        let count = unsafe { MM_HANDLE_COUNT += 1; MM_HANDLE_COUNT - 1 };
+        let count = unsafe {
+            MM_HANDLE_COUNT += 1;
+            MM_HANDLE_COUNT - 1
+        };
         if count != 0 {
             panic!("Multiple users of MemoryManagerHandle!");
         }
@@ -113,12 +116,14 @@ impl DerefMut for MemoryManagerHandle<'_> {
 /// and place it at the usual offset.  The MMU will not be enabled yet,
 /// as the process entry has not yet been created.
 impl MemoryManager {
-    pub fn init(&mut self,
-        base: *mut u32,
-        args: &KernelArguments,
-    ) -> Result<(), XousError> {
+    pub fn init(&mut self, base: *mut u32, args: &KernelArguments) -> Result<(), XousError> {
         let mut args_iter = args.iter();
         let xarg_def = args_iter.next().expect("mm: no kernel arguments found");
+        assert!(
+            self.extra.len() == 0,
+            "mm: self.extra.len() was {}, not 0",
+            self.extra.len()
+        );
         assert!(
             xarg_def.name == make_type!("XArg"),
             "mm: first tag wasn't XArg"
@@ -131,7 +136,11 @@ impl MemoryManager {
         let mut mem_size = self.ram_size / PAGE_SIZE;
         for tag in args_iter {
             if tag.name == make_type!("MREx") {
-                assert!(self.extra.len() == 0, "mm: MREx tag appears twice!  self.extra.len() is {}, not 0", self.extra.len());
+                assert!(
+                    self.extra.len() == 0,
+                    "mm: MREx tag appears twice!  self.extra.len() is {}, not 0",
+                    self.extra.len()
+                );
                 let ptr = tag.data.as_ptr() as *mut MemoryRangeExtra;
                 self.extra = unsafe {
                     slice::from_raw_parts_mut(
@@ -232,7 +241,7 @@ impl MemoryManager {
         }
 
         let mut mm = MemoryMapping::current();
-        for virt in (virt..(virt+size)).step_by(PAGE_SIZE) {
+        for virt in (virt..(virt + size)).step_by(PAGE_SIZE) {
             mm.reserve_address(self, virt, flags)?;
         }
         Ok(XousResult::MemoryRange(virt_ptr as *mut u8, size))
@@ -337,10 +346,7 @@ impl MemoryManager {
     /// # Errors
     ///
     /// * MemoryInUse - The specified page is already mapped
-    pub fn unmap_page(
-        &mut self,
-        virt: *mut usize,
-    ) -> Result<(), XousError> {
+    pub fn unmap_page(&mut self, virt: *mut usize) -> Result<(), XousError> {
         let pid = crate::arch::current_pid();
         let phys = crate::arch::mem::virt_to_phys(virt as usize)?;
         self.release_page(phys as *mut usize, pid)?;

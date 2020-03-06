@@ -38,21 +38,27 @@ fn handle_panic(_arg: &PanicInfo) -> ! {
 }
 
 #[no_mangle]
-fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset: *mut u32) -> ! {
-    let args = args::KernelArguments::new(arg_offset);
-    // Everything needs memory, so the first thing we should do is initialize the memory manager.
+pub extern "C" fn init(arg_offset: *const u32, init_offset: *const u32, rpt_offset: *mut u32) {
+    unsafe { args::KernelArguments::init(arg_offset) };
+    let args = args::KernelArguments::get();
     {
         let mut memory_manager = MemoryManagerHandle::get();
         memory_manager
             .init(rpt_offset, &args)
             .expect("couldn't initialize memory manager");
     }
+    // Everything needs memory, so the first thing we should do is initialize the memory manager.
     {
         let mut system_services = SystemServicesHandle::get();
         system_services.init(init_offset, &args);
     }
-    arch::init();
 
+    // Now that the memory manager is set up, perform any arch-specific initializations.
+    arch::init();
+}
+
+#[no_mangle]
+pub extern "C" fn main() {
     // Either map memory using a syscall, or if we're debugging the syscall
     // handler then directly map it.
     #[cfg(feature = "debug-print")]
@@ -85,9 +91,13 @@ fn xous_kernel_main(arg_offset: *const u32, init_offset: *const u32, rpt_offset:
         print!("}} ");
     }
 
-    println!("Kernel arguments:");
-    for _arg in args.iter() {
-        println!("    {}", _arg);
+    #[cfg(feature = "debug-print")]
+    {
+        let args = args::KernelArguments::get();
+        println!("Kernel arguments:");
+        for arg in args.iter() {
+            println!("    {}", arg);
+        }
     }
 
     loop {

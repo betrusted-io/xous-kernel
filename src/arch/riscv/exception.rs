@@ -216,3 +216,8 @@ impl RiscvException {
         }
     }
 }
+
+#[no_mangle]
+pub extern "C" fn abort() -> ! {
+    panic!("called abort()");
+}

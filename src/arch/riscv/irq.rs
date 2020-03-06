@@ -62,8 +62,14 @@ static mut PREVIOUS_PID: Option<XousPid> = None;
 //     crate::arch::syscall::resume(current_pid() == 1, ProcessContext::current());
 // }
 
-#[no_mangle]
-pub fn trap_handler(
+/// Trap entry point rust (_start_trap_rust)
+///
+/// scause is read to determine the cause of the trap. The top bit indicates
+/// if it's an interrupt or an exception. The result is converted to an element
+/// of the Interrupt or Exception enum and passed to handle_interrupt or
+/// handle_exception.
+#[export_name = "_start_trap_rust"]
+pub extern "C" fn trap_handler(
     a0: usize,
     a1: usize,
     a2: usize,
