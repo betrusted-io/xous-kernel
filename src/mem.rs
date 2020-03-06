@@ -131,7 +131,7 @@ impl MemoryManager {
         let mut mem_size = self.ram_size / PAGE_SIZE;
         for tag in args_iter {
             if tag.name == make_type!("MREx") {
-                assert!(self.extra.len() == 0, "mm: MREx tag appears twice!");
+                assert!(self.extra.len() == 0, "mm: MREx tag appears twice!  self.extra.len() is {}, not 0", self.extra.len());
                 let ptr = tag.data.as_ptr() as *mut MemoryRangeExtra;
                 self.extra = unsafe {
                     slice::from_raw_parts_mut(
