@@ -21,7 +21,11 @@ pub enum ProcessState {
 
     /// This is a brand-new process that hasn't been run
     /// yet, and needs its stack and entrypoint set up.
-    Setup(usize /* entrypoint */, usize /* stack */, usize /* stack size */),
+    Setup(
+        usize, /* entrypoint */
+        usize, /* stack */
+        usize, /* stack size */
+    ),
 
     /// This process is able to be run
     Ready,
