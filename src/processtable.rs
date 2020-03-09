@@ -136,7 +136,7 @@ impl SystemServices {
         let init_offsets = {
             let mut init_count = 1;
             for arg in args.iter() {
-                if arg.name == make_type!("Init") {
+                if arg.name == make_type!("IniE") {
                     init_count += 1;
                 }
             }
