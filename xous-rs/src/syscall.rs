@@ -217,7 +217,7 @@ pub enum SysCall {
     /// * **ProcessNotChild**: The given process was not a child process, and
     ///                        therefore couldn't be resumed.
     /// * **ProcessTerminated**: The process has crashed.
-    SwitchTo(PID, *const usize /* context page */),
+    SwitchTo(PID, usize /* thread ID */),
 
     Invalid(usize, usize, usize, usize, usize, usize, usize),
 }
@@ -364,7 +364,7 @@ impl SysCall {
                 SysCall::ClaimInterrupt(a1, a2 as *mut usize, a3 as *mut usize)
             }
             Some(SysCallNumber::FreeInterrupt) => SysCall::FreeInterrupt(a1),
-            Some(SysCallNumber::SwitchTo) => SysCall::SwitchTo(a1 as PID, a2 as *const usize),
+            Some(SysCallNumber::SwitchTo) => SysCall::SwitchTo(a1 as PID, a2 as usize),
             Some(SysCallNumber::IncreaseHeap) => SysCall::IncreaseHeap(
                 a1 as usize,
                 MemoryFlags::from_bits(a2).ok_or(InvalidSyscall {})?,

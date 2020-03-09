@@ -121,7 +121,7 @@ pub extern "C" fn main() {
         match next_pid {
             Some(pid) => {
                 println!("Attempting to switch to PID {}", pid);
-                xous::rsyscall(xous::SysCall::SwitchTo(pid, 0 as *const usize))
+                xous::rsyscall(xous::SysCall::SwitchTo(pid, 0))
                     .expect("couldn't switch to pid");
                 ()
             }
