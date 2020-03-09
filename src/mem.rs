@@ -6,7 +6,7 @@ use core::slice;
 use core::str;
 
 pub use crate::arch::mem::{MemoryMapping, PAGE_SIZE};
-use xous::{MemoryAddress, MemoryFlags, XousError, XousPid, XousResult};
+use xous::{MemoryAddress, MemoryFlags, PID};
 
 #[derive(Debug)]
 enum ClaimOrRelease {
@@ -45,7 +45,7 @@ impl fmt::Display for MemoryRangeExtra {
 }
 
 pub struct MemoryManager {
-    allocations: &'static mut [XousPid],
+    allocations: &'static mut [PID],
     extra: &'static [MemoryRangeExtra],
     ram_start: usize,
     ram_size: usize,
@@ -116,7 +116,7 @@ impl DerefMut for MemoryManagerHandle<'_> {
 /// and place it at the usual offset.  The MMU will not be enabled yet,
 /// as the process entry has not yet been created.
 impl MemoryManager {
-    pub fn init(&mut self, base: *mut u32, args: &KernelArguments) -> Result<(), XousError> {
+    pub fn init(&mut self, base: *mut u32, args: &KernelArguments) -> Result<(), xous::Error> {
         let mut args_iter = args.iter();
         let xarg_def = args_iter.next().expect("mm: no kernel arguments found");
         assert!(
@@ -155,7 +155,7 @@ impl MemoryManager {
             mem_size += range.mem_size as usize / PAGE_SIZE;
         }
 
-        self.allocations = unsafe { slice::from_raw_parts_mut(base as *mut XousPid, mem_size) };
+        self.allocations = unsafe { slice::from_raw_parts_mut(base as *mut PID, mem_size) };
         Ok(())
     }
 
@@ -168,12 +168,22 @@ impl MemoryManager {
             let name_bytes = self.ram_name.to_le_bytes();
             // ... and then convert that slice into a string slice
             let ram_name = str::from_utf8_unchecked(&name_bytes);
-            println!("    Region {} ({:08x}) {:08x} - {:08x} {} bytes:", ram_name, self.ram_name,
-        self.ram_start, self.ram_start + self.ram_size, self.ram_size);
+            println!(
+                "    Region {} ({:08x}) {:08x} - {:08x} {} bytes:",
+                ram_name,
+                self.ram_name,
+                self.ram_start,
+                self.ram_start + self.ram_size,
+                self.ram_size
+            );
         };
-        for o in 0..self.ram_size/PAGE_SIZE {
-            if self.allocations[offset+o] != 0 {
-                println!("        {:08x} => {}", self.ram_size + o * PAGE_SIZE, self.allocations[o]);
+        for o in 0..self.ram_size / PAGE_SIZE {
+            if self.allocations[offset + o] != 0 {
+                println!(
+                    "        {:08x} => {}",
+                    self.ram_size + o * PAGE_SIZE,
+                    self.allocations[o]
+                );
             }
         }
 
@@ -183,11 +193,12 @@ impl MemoryManager {
         // if it's not in use.
         for region in self.extra {
             println!("    Region {}:", region);
-            for o in 0..(region.mem_size as usize)/PAGE_SIZE {
-                if self.allocations[offset+o] != 0 {
-                    println!("        {:08x} => {}",
-                        (region.mem_start as usize) + o*PAGE_SIZE,
-                        self.allocations[offset+o]
+            for o in 0..(region.mem_size as usize) / PAGE_SIZE {
+                if self.allocations[offset + o] != 0 {
+                    println!(
+                        "        {:08x} => {}",
+                        (region.mem_start as usize) + o * PAGE_SIZE,
+                        self.allocations[offset + o]
                     )
                 }
             }
@@ -198,7 +209,7 @@ impl MemoryManager {
     /// Allocate a single page to the given process.
     /// Ensures the page is zeroed out prior to handing it over to
     /// the specified process.
-    pub fn alloc_page(&mut self, pid: XousPid) -> Result<usize, XousError> {
+    pub fn alloc_page(&mut self, pid: PID) -> Result<usize, xous::Error> {
         // Go through all RAM pages looking for a free page.
         // Optimization: start from the previous address.
         // println!("Allocating page for PID {}", pid);
@@ -218,7 +229,7 @@ impl MemoryManager {
                 return Ok(index * PAGE_SIZE + self.ram_start);
             }
         }
-        Err(XousError::OutOfMemory)
+        Err(xous::Error::OutOfMemory)
     }
 
     /// Reserve the given range without actually allocating memory.
@@ -229,22 +240,22 @@ impl MemoryManager {
         virt_ptr: *mut usize,
         size: usize,
         flags: MemoryFlags,
-    ) -> Result<XousResult, XousError> {
+    ) -> Result<xous::Result, xous::Error> {
         let virt = virt_ptr as usize;
 
         if virt & 0xfff != 0 {
-            return Err(XousError::BadAlignment);
+            return Err(xous::Error::BadAlignment);
         }
 
         if size & 0xfff != 0 {
-            return Err(XousError::BadAlignment);
+            return Err(xous::Error::BadAlignment);
         }
 
         let mut mm = MemoryMapping::current();
         for virt in (virt..(virt + size)).step_by(PAGE_SIZE) {
             mm.reserve_address(self, virt, flags)?;
         }
-        Ok(XousResult::MemoryRange(virt_ptr as *mut u8, size))
+        Ok(xous::Result::MemoryRange(virt_ptr as *mut u8, size))
     }
 
     /// Attempt to map the given physical address into the virtual address space
@@ -259,7 +270,7 @@ impl MemoryManager {
         virt_ptr: *mut usize,
         size: usize,
         flags: MemoryFlags,
-    ) -> Result<MemoryAddress, XousError> {
+    ) -> Result<MemoryAddress, xous::Error> {
         let ss = SystemServicesHandle::get();
         let pid = ss.current_pid();
         let phys = phys_ptr as usize;
@@ -267,7 +278,7 @@ impl MemoryManager {
 
         if phys == 0 || virt == 0 {
             println!("Attempted to map a range without specifying phys or virt");
-            return Err(XousError::BadAddress);
+            return Err(xous::Error::BadAddress);
         }
 
         let mut error = None;
@@ -304,7 +315,7 @@ impl MemoryManager {
     }
 
     // /// Map a range of physical addresses into the current memory space.
-    // pub fn map_range(&mut self, phys: *mut usize, virt: *mut usize, size: usize, flags: MemoryFlags) -> XousResult {
+    // pub fn map_range(&mut self, phys: *mut usize, virt: *mut usize, size: usize, flags: MemoryFlags) -> xous::Result {
     //     // If a physical address range was requested, verify that it is valid
     //     if phys as usize != 0 {
 
@@ -313,21 +324,21 @@ impl MemoryManager {
     //         // No virt address was
     //     }
     //     for offset in (0..size).step_by(4096) {
-    //         if let XousResult::Error(e) = crate::arch::mem::
+    //         if let xous::Result::Error(e) = crate::arch::mem::
     //             map_page_inner(
     //                 ((phys as usize) + offset) as usize,
     //                 ((virt as usize) + offset) as usize,
     //                 req_flags,
     //             )
-    //             .map(|x| XousResult::MemoryAddress(x.get() as *mut usize))
-    //             .unwrap_or_else(|e| XousResult::Error(e))
+    //             .map(|x| xous::Result::MemoryAddress(x.get() as *mut usize))
+    //             .unwrap_or_else(|e| xous::Result::Error(e))
     //         {
-    //             result = XousResult::Error(e);
+    //             result = xous::Result::Error(e);
     //             break;
     //         }
     //         last_mapped = offset;
     //     }
-    //     if result != XousResult::Ok {
+    //     if result != xous::Result::Ok {
     //         for offset in (0..last_mapped).step_by(4096) {
     //             mm.unmap_page(
     //                 ((phys as usize) + offset) as *mut usize,
@@ -346,7 +357,7 @@ impl MemoryManager {
     /// # Errors
     ///
     /// * MemoryInUse - The specified page is already mapped
-    pub fn unmap_page(&mut self, virt: *mut usize) -> Result<(), XousError> {
+    pub fn unmap_page(&mut self, virt: *mut usize) -> Result<(), xous::Error> {
         let pid = crate::arch::current_pid();
         let phys = crate::arch::mem::virt_to_phys(virt as usize)?;
         self.release_page(phys as *mut usize, pid)?;
@@ -356,16 +367,16 @@ impl MemoryManager {
     fn claim_or_release(
         &mut self,
         addr: *mut usize,
-        pid: XousPid,
+        pid: PID,
         action: ClaimOrRelease,
-    ) -> Result<(), XousError> {
+    ) -> Result<(), xous::Error> {
         fn action_inner(
-            addr: &mut XousPid,
-            pid: XousPid,
+            addr: &mut PID,
+            pid: PID,
             action: ClaimOrRelease,
-        ) -> Result<(), XousError> {
+        ) -> Result<(), xous::Error> {
             if *addr != 0 && *addr != pid {
-                return Err(XousError::MemoryInUse);
+                return Err(xous::Error::MemoryInUse);
             }
             match action {
                 ClaimOrRelease::Claim => {
@@ -381,7 +392,7 @@ impl MemoryManager {
 
         // Ensure the address lies on a page boundary
         if addr & 0xfff != 0 {
-            return Err(XousError::BadAlignment);
+            return Err(xous::Error::BadAlignment);
         }
 
         let mut offset = 0;
@@ -407,16 +418,16 @@ impl MemoryManager {
             "mem: unable to claim or release physical address {:08x}",
             addr
         );
-        Err(XousError::BadAddress)
+        Err(xous::Error::BadAddress)
     }
 
     /// Mark a given address as being owned by the specified process ID
-    fn claim_page(&mut self, addr: *mut usize, pid: XousPid) -> Result<(), XousError> {
+    fn claim_page(&mut self, addr: *mut usize, pid: PID) -> Result<(), xous::Error> {
         self.claim_or_release(addr, pid, ClaimOrRelease::Claim)
     }
 
     /// Mark a given address as no longer being owned by the specified process ID
-    fn release_page(&mut self, addr: *mut usize, pid: XousPid) -> Result<(), XousError> {
+    fn release_page(&mut self, addr: *mut usize, pid: PID) -> Result<(), xous::Error> {
         self.claim_or_release(addr, pid, ClaimOrRelease::Release)
     }
 }

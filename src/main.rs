@@ -110,7 +110,7 @@ pub extern "C" fn main() {
                     // If this process is owned by the kernel, and if it can be run, run it.
                     if process.ppid == 1 && process.runnable() {
                         println!("PID {} is owned by PID 1, and is runnable", pid_idx + 1);
-                        next_pid = Some(pid_idx as XousPid + 1);
+                        next_pid = Some(pid_idx as PID + 1);
                         break;
                     }
                 }

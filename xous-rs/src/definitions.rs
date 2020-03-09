@@ -5,19 +5,19 @@ pub type MemorySize = NonZeroUsize;
 pub type StackPointer = usize;
 pub type MessageId = usize;
 
-pub type XousPid = u8;
-pub type XousMessageSender = usize;
-pub type XousConnection = usize;
+pub type PID = u8;
+pub type MessageSender = usize;
+pub type Connection = usize;
 
 /// Server ID
-pub type XousSid = usize;
+pub type SID = usize;
 
 /// Equivalent to a RISC-V Hart ID
-pub type XousCpuId = usize;
+pub type CpuID = usize;
 
 #[repr(C)]
 #[derive(Debug, PartialEq)]
-pub enum XousError {
+pub enum Error {
     NoError = 0,
     BadAlignment = 1,
     BadAddress = 2,
@@ -36,13 +36,13 @@ pub enum XousError {
 }
 
 #[repr(C)]
-pub struct XousContext {
+pub struct Context {
     stack: StackPointer,
-    pid: XousPid,
+    pid: PID,
 }
 
 #[repr(C)]
-pub struct XousMemoryMessage {
+pub struct MemoryMessage {
     id: MessageId,
     in_buf: Option<MemoryAddress>,
     in_buf_size: Option<MemorySize>,
@@ -51,7 +51,7 @@ pub struct XousMemoryMessage {
 }
 
 #[repr(C)]
-pub struct XousScalarMessage {
+pub struct ScalarMessage {
     id: MessageId,
     arg1: usize,
     arg2: usize,
@@ -60,13 +60,13 @@ pub struct XousScalarMessage {
 }
 
 #[allow(dead_code)]
-pub enum XousMessage {
-    Memory(XousMemoryMessage),
-    Scalar(XousScalarMessage),
+pub enum Message {
+    Memory(MemoryMessage),
+    Scalar(ScalarMessage),
 }
 
 #[allow(dead_code)]
-pub struct XousMessageReceived {
-    sender: XousMessageSender,
-    message: XousMessage,
+pub struct MessageReceived {
+    sender: MessageSender,
+    message: Message,
 }

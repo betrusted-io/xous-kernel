@@ -1,4 +1,4 @@
-use xous::{XousPid, XousResult};
+use xous::PID;
 
 pub mod irq {
     /// Disable external interrupts
@@ -20,7 +20,7 @@ pub mod irq {
     }
 }
 
-pub fn current_pid() -> XousPid {
+pub fn current_pid() -> PID {
     unimplemented!();
 }
 
@@ -50,14 +50,14 @@ pub mod syscall {
 
 pub mod mem {
     use crate::mem::MemoryManager;
-    use xous::{MemoryFlags, XousError, XousPid};
+    use xous::{MemoryFlags, XousError, PID};
     #[derive(Copy, Clone, Default, PartialEq)]
     pub struct MemoryMapping {}
     impl MemoryMapping {
         pub unsafe fn from_raw(&mut self, new: usize) {
             unimplemented!();
         }
-        pub fn get_pid(&self) -> XousPid {
+        pub fn get_pid(&self) -> PID {
             unimplemented!();
         }
         pub fn current() -> MemoryMapping {
@@ -90,7 +90,7 @@ pub mod mem {
 
     pub fn map_page_inner(
         mm: &mut MemoryManager,
-        pid: XousPid,
+        pid: PID,
         phys: usize,
         virt: usize,
         req_flags: MemoryFlags,
@@ -156,7 +156,7 @@ pub fn _xous_syscall_rust(
     a5: usize,
     a6: usize,
     a7: usize,
-    ret: &mut XousResult,
+    ret: &mut xous::Result,
 ) {
     unimplemented!();
 }
@@ -172,11 +172,11 @@ fn _xous_syscall(
     a5: usize,
     a6: usize,
     a7: usize,
-    ret: &mut XousResult,
+    ret: &mut xous::Result,
 ) {
     unimplemented!();
 }
 
-pub fn virt_to_phys(virt: usize) -> Result<usize, XousResult> {
+pub fn virt_to_phys(virt: usize) -> Result<usize, xous::Result> {
     unimplemented!();
 }

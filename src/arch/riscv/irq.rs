@@ -3,10 +3,10 @@ use crate::arch::mem::MemoryMapping;
 use crate::mem::MemoryManagerHandle;
 use crate::processtable::{ProcessContext, ProcessState, SystemServicesHandle, RETURN_FROM_ISR};
 use vexriscv::register::{scause, sepc, sie, sstatus, stval, vsim, vsip};
-use xous::{SysCall, XousError, XousPid, XousResult};
+use xous::{SysCall, PID};
 
 extern "Rust" {
-    fn _xous_syscall_return_result(result: &XousResult) -> !;
+    fn _xous_syscall_return_result(result: &xous::Result) -> !;
 }
 
 extern "C" {
@@ -33,9 +33,9 @@ pub fn disable_irq(irq_no: usize) {
     vsim::write(vsim::read() & !(1 << irq_no));
 }
 
-static mut PREVIOUS_PID: Option<XousPid> = None;
+static mut PREVIOUS_PID: Option<PID> = None;
 
-// fn map_page_and_return(pc: usize, addr: usize, pid: XousPid, flags: MemoryFlags) {
+// fn map_page_and_return(pc: usize, addr: usize, pid: PID, flags: MemoryFlags) {
 //     assert!(
 //         pid > 1,
 //         "kernel store page fault (pc: {:08x}  target: {:08x})",
@@ -98,7 +98,7 @@ pub extern "C" fn trap_handler(
         // instruction.
         crate::arch::ProcessContext::current().sepc += 4;
         let call = SysCall::from_args(a0, a1, a2, a3, a4, a5, a6, a7).unwrap_or_else(|_| unsafe {
-            _xous_syscall_return_result(&XousResult::Error(XousError::UnhandledSyscall))
+            _xous_syscall_return_result(&xous::Result::Error(xous::Error::UnhandledSyscall))
         });
 
         let response = crate::syscall::handle(call);
@@ -108,7 +108,7 @@ pub extern "C" fn trap_handler(
         // If we're resuming a process that was previously sleeping, restore the context.
         // Otherwise, keep the context the same but pass the return values in 8 return
         // registers.
-        if response == XousResult::ResumeProcess {
+        if response == xous::Result::ResumeProcess {
             crate::arch::syscall::resume(current_pid() == 1, ProcessContext::current());
         } else {
             println!("Returning to address {:08x}", ProcessContext::current().sepc);

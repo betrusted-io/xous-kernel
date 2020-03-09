@@ -1,5 +1,5 @@
 use vexriscv::register::{satp, sie, sstatus};
-use xous::XousPid;
+use xous::PID;
 
 pub mod exception;
 pub mod irq;
@@ -8,8 +8,8 @@ pub mod syscall;
 
 static mut PROCESS_CONTEXT: *mut ProcessContext = 0xff80_1000 as *mut ProcessContext;
 
-pub fn current_pid() -> XousPid {
-    satp::read().asid() as XousPid
+pub fn current_pid() -> PID {
+    satp::read().asid() as PID
 }
 
 pub fn init() {

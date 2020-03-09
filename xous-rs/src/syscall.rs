@@ -1,4 +1,4 @@
-use crate::{XousCpuId, XousError, XousPid};
+use crate::{CpuID, Error, PID};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
@@ -87,7 +87,7 @@ pub enum SysCall {
     ///                     or the size isn't a multiple of the page width.
     /// * **BadAddress**: The address conflicts with the kernel
     SetMemRegion(
-        XousPid,    /* pid */
+        PID,    /* pid */
         MemoryType, /* region type */
         *mut usize, /* region address */
         usize,      /* region size */
@@ -141,7 +141,7 @@ pub enum SysCall {
     WaitEvent,
 
     /// Stop running the given process.
-    Suspend(XousPid, XousCpuId),
+    Suspend(PID, CpuID),
 
     /// Claims an interrupt and unmasks it immediately.  The provided function will
     /// be called from within an interrupt context, but using the ordinary privilege level of
@@ -217,7 +217,7 @@ pub enum SysCall {
     /// * **ProcessNotChild**: The given process was not a child process, and
     ///                        therefore couldn't be resumed.
     /// * **ProcessTerminated**: The process has crashed.
-    SwitchTo(XousPid, *const usize /* context page */),
+    SwitchTo(PID, *const usize /* context page */),
 
     Invalid(usize, usize, usize, usize, usize, usize, usize),
 }
@@ -349,7 +349,7 @@ impl SysCall {
         a5: usize,
         a6: usize,
         a7: usize,
-    ) -> Result<Self, InvalidSyscall> {
+    ) -> core::result::Result<Self, InvalidSyscall> {
         Ok(match FromPrimitive::from_usize(a0) {
             Some(SysCallNumber::MapPhysical) => SysCall::MapPhysical(
                 a1 as *mut usize,
@@ -359,12 +359,12 @@ impl SysCall {
             ),
             Some(SysCallNumber::Yield) => SysCall::Yield,
             Some(SysCallNumber::WaitEvent) => SysCall::WaitEvent,
-            Some(SysCallNumber::Suspend) => SysCall::Suspend(a1 as XousPid, a2),
+            Some(SysCallNumber::Suspend) => SysCall::Suspend(a1 as PID, a2),
             Some(SysCallNumber::ClaimInterrupt) => {
                 SysCall::ClaimInterrupt(a1, a2 as *mut usize, a3 as *mut usize)
             }
             Some(SysCallNumber::FreeInterrupt) => SysCall::FreeInterrupt(a1),
-            Some(SysCallNumber::SwitchTo) => SysCall::SwitchTo(a1 as XousPid, a2 as *const usize),
+            Some(SysCallNumber::SwitchTo) => SysCall::SwitchTo(a1 as PID, a2 as *const usize),
             Some(SysCallNumber::IncreaseHeap) => SysCall::IncreaseHeap(
                 a1 as usize,
                 MemoryFlags::from_bits(a2).ok_or(InvalidSyscall {})?,
@@ -376,7 +376,7 @@ impl SysCall {
                 MemoryFlags::from_bits(a3).ok_or(InvalidSyscall {})?,
             ),
             Some(SysCallNumber::SetMemRegion) => {
-                SysCall::SetMemRegion(a1 as XousPid, MemoryType::from(a2), a3 as *mut usize, a4)
+                SysCall::SetMemRegion(a1 as PID, MemoryType::from(a2), a3 as *mut usize, a4)
             }
             Some(SysCallNumber::Invalid) => SysCall::Invalid(a1, a2, a3, a4, a5, a6, a7),
             None => return Err(InvalidSyscall {}),
@@ -386,9 +386,9 @@ impl SysCall {
 
 #[repr(C)]
 #[derive(Debug, PartialEq)]
-pub enum XousResult {
+pub enum Result {
     ReturnResult,
-    Error(XousError),
+    Error(Error),
     MemoryAddress(*mut u8),
     MemoryRange(*mut u8 /* base */, usize /* size */),
     ResumeResult(usize, usize, usize, usize, usize, usize),
@@ -396,13 +396,13 @@ pub enum XousResult {
     UnknownResult(usize, usize, usize, usize, usize, usize, usize),
 }
 
-impl From<XousError> for XousResult {
-    fn from(e: XousError) -> Self {
-        XousResult::Error(e)
+impl From<Error> for Result {
+    fn from(e: Error) -> Self {
+        Result::Error(e)
     }
 }
 
-pub type SyscallResult = Result<XousResult, XousError>;
+pub type SyscallResult = core::result::Result<Result, Error>;
 
 extern "Rust" {
     fn _xous_syscall_rust(
@@ -414,7 +414,7 @@ extern "Rust" {
         a5: usize,
         a6: usize,
         a7: usize,
-        ret: &mut XousResult,
+        ret: &mut Result,
     );
     fn _xous_syscall(
         nr: usize,
@@ -425,7 +425,7 @@ extern "Rust" {
         a5: usize,
         a6: usize,
         a7: usize,
-        ret: &mut XousResult,
+        ret: &mut Result,
     );
 }
 
@@ -439,7 +439,7 @@ pub fn rsyscall(call: SysCall) -> SyscallResult {
         )
     };
     match ret {
-        XousResult::Error(e) => Err(e),
+        Result::Error(e) => Err(e),
         other => Ok(other),
     }
 }
@@ -457,7 +457,7 @@ pub fn dangerous_syscall(call: SysCall) -> SyscallResult {
         )
     };
     match ret {
-        XousResult::Error(e) => Err(e),
+        Result::Error(e) => Err(e),
         other => Ok(other),
     }
 }

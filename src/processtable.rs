@@ -4,7 +4,7 @@ pub use crate::arch::ProcessContext;
 use crate::args::KernelArguments;
 use crate::mem::MemoryManagerHandle;
 use core::slice;
-use xous::{MemoryFlags, XousError, XousPid};
+use xous::{MemoryFlags, PID};
 
 const MAX_PROCESS_COUNT: usize = 254;
 const DEFAULT_STACK_SIZE: usize = 131072;
@@ -54,7 +54,7 @@ pub struct Process {
 
     /// The process that created this process, which tells
     /// who is allowed to manipulate this process.
-    pub ppid: XousPid,
+    pub ppid: PID,
 
     /// Default virtual address when MapMemory is called with no `virt`
     pub mem_default_base: usize,
@@ -164,10 +164,10 @@ impl SystemServices {
         }
     }
 
-    pub fn get_process(&self, pid: XousPid) -> Result<&Process, XousError> {
+    pub fn get_process(&self, pid: PID) -> Result<&Process, xous::Error> {
         if pid == 0 {
             println!("Process not found -- PID is 0");
-            return Err(XousError::ProcessNotFound);
+            return Err(xous::Error::ProcessNotFound);
         }
 
         // PID0 doesn't exist -- process IDs are offset by 1.
@@ -178,15 +178,15 @@ impl SystemServices {
                 self.processes[pid_idx].mapping.get_pid(),
                 pid
             );
-            return Err(XousError::ProcessNotFound);
+            return Err(xous::Error::ProcessNotFound);
         }
         Ok(&self.processes[pid_idx])
     }
 
-    pub fn get_process_mut(&mut self, pid: XousPid) -> Result<&mut Process, XousError> {
+    pub fn get_process_mut(&mut self, pid: PID) -> Result<&mut Process, xous::Error> {
         if pid == 0 {
             println!("Process not found -- PID is 0");
-            return Err(XousError::ProcessNotFound);
+            return Err(xous::Error::ProcessNotFound);
         }
 
         // PID0 doesn't exist -- process IDs are offset by 1.
@@ -197,12 +197,12 @@ impl SystemServices {
                 self.processes[pid_idx].mapping.get_pid(),
                 pid
             );
-            return Err(XousError::ProcessNotFound);
+            return Err(xous::Error::ProcessNotFound);
         }
         Ok(&mut self.processes[pid_idx])
     }
 
-    pub fn current_pid(&self) -> XousPid {
+    pub fn current_pid(&self) -> PID {
         let pid = arch::current_pid();
         assert_ne!(pid, 0, "no current process");
         // PID0 doesn't exist -- process IDs are offset by 1.
@@ -212,15 +212,15 @@ impl SystemServices {
             "process memory map doesn't match -- current_pid: {}",
             pid
         );
-        pid as XousPid
+        pid as PID
     }
 
-    pub fn current_process(&self) -> Result<&Process, XousError> {
+    pub fn current_process(&self) -> Result<&Process, xous::Error> {
         let pid = self.current_pid();
         self.get_process(pid)
     }
 
-    pub fn current_process_mut(&mut self) -> Result<&mut Process, XousError> {
+    pub fn current_process_mut(&mut self) -> Result<&mut Process, xous::Error> {
         let pid = self.current_pid();
         self.get_process_mut(pid)
     }
@@ -231,11 +231,11 @@ impl SystemServices {
     /// 3. Run the new process, returning to an illegal instruction
     pub fn make_callback_to(
         &mut self,
-        pid: XousPid,
+        pid: PID,
         pc: *const usize,
         irq_no: usize,
         arg: *mut usize,
-    ) -> Result<(), XousError> {
+    ) -> Result<(), xous::Error> {
         // Get the current process (which was just interrupted) and mark
         // it as "ready to run".
         {
@@ -287,9 +287,9 @@ impl SystemServices {
     /// If the process is in the Setup state, set it up and then resume.
     pub fn resume_pid(
         &mut self,
-        pid: XousPid,
+        pid: PID,
         previous_state: ProcessState,
-    ) -> Result<(), XousError> {
+    ) -> Result<(), xous::Error> {
         let previous_pid = self.current_pid();
 
         // Save state if the PID has changed
@@ -297,7 +297,7 @@ impl SystemServices {
             let context = {
                 let new = self.get_process_mut(pid)?;
                 match new.state {
-                    ProcessState::Free => return Err(XousError::ProcessNotFound),
+                    ProcessState::Free => return Err(xous::Error::ProcessNotFound),
                     _ => (),
                 }
 

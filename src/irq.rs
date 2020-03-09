@@ -1,10 +1,10 @@
-use xous::{XousError, XousResult, XousPid};
+use xous::PID;
 use crate::processtable::SystemServicesHandle;
 use crate::arch;
 
-static mut IRQ_HANDLERS: [Option<(XousPid, *mut usize, *mut usize)>; 32] = [None; 32];
+static mut IRQ_HANDLERS: [Option<(PID, *mut usize, *mut usize)>; 32] = [None; 32];
 
-pub fn handle(irqs_pending: usize) -> Result<XousResult, XousError> {
+pub fn handle(irqs_pending: usize) -> Result<xous::Result, xous::Error> {
     // Unsafe is required here because we're accessing a static
     // mutable value, and it could be modified from various threads.
     // However, this is fine because this is run from an IRQ context
@@ -19,7 +19,7 @@ pub fn handle(irqs_pending: usize) -> Result<XousResult, XousError> {
                     // Disable all other IRQs and redirect into userspace
                     arch::irq::disable_all_irqs();
                     println!("Making a callback to PID{}: {:08x} ({:08x}, {:08x})", pid, f as usize, irq_no as usize, arg as usize);
-                    return ss.make_callback_to(pid, f, irq_no, arg).map(|_| XousResult::ResumeProcess);
+                    return ss.make_callback_to(pid, f, irq_no, arg).map(|_| xous::Result::ResumeProcess);
                 } else {
                     // If there is no handler, mask this interrupt
                     // to prevent an IRQ storm.  This is considered
@@ -30,18 +30,18 @@ pub fn handle(irqs_pending: usize) -> Result<XousResult, XousError> {
             }
         }
     }
-    Ok(XousResult::ResumeProcess)
+    Ok(xous::Result::ResumeProcess)
 }
 
-pub fn interrupt_claim(irq: usize, pid: XousPid, f: *mut usize, arg: *mut usize) -> Result<(), XousError> {
+pub fn interrupt_claim(irq: usize, pid: PID, f: *mut usize, arg: *mut usize) -> Result<(), xous::Error> {
     // Unsafe is required since we're accessing a static mut array.
     // However, we disable interrupts to prevent contention on this array.
     unsafe {
         arch::irq::enable_all_irqs();
         let result = if irq > IRQ_HANDLERS.len() {
-            Err(XousError::InterruptNotFound)
+            Err(xous::Error::InterruptNotFound)
         } else if IRQ_HANDLERS[irq].is_some() {
-            Err(XousError::InterruptInUse)
+            Err(xous::Error::InterruptInUse)
         } else {
             IRQ_HANDLERS[irq] = Some((pid, f, arg));
             arch::irq::enable_irq(irq);

@@ -1,7 +1,7 @@
 use crate::mem::MemoryManager;
 use core::fmt;
 use vexriscv::register::satp;
-use xous::{MemoryFlags, XousError, XousPid};
+use xous::{MemoryFlags, PID};
 
 pub const DEFAULT_STACK_TOP: usize = 0x8000_0000;
 pub const DEFAULT_HEAP_BASE: usize = 0x2000_0000;
@@ -68,7 +68,7 @@ impl MemoryMapping {
     /// Create a new MemoryMapping with the given SATP value.
     /// Note that the SATP contains a physical address.
     /// The specified address MUST be mapped to `PAGE_TABLE_ROOT_OFFSET`.
-    // pub fn set(&mut self, root_addr: usize, pid: XousPid) {
+    // pub fn set(&mut self, root_addr: usize, pid: PID) {
     //     self.satp: 0x8000_0000 | (((pid as usize) << 22) & (((1 << 9) - 1) << 22)) | (root_addr >> 12)
     // }
     pub unsafe fn from_raw(&mut self, satp: usize) {
@@ -84,8 +84,8 @@ impl MemoryMapping {
     }
 
     /// Get the "PID" (actually, ASID) from the current mapping
-    pub fn get_pid(&self) -> XousPid {
-        (self.satp >> 22 & ((1 << 9) - 1)) as XousPid
+    pub fn get_pid(&self) -> PID {
+        (self.satp >> 22 & ((1 << 9) - 1)) as PID
     }
 
     /// Set this mapping as the systemwide mapping.
@@ -174,7 +174,7 @@ impl MemoryMapping {
         mm: &mut MemoryManager,
         addr: usize,
         flags: MemoryFlags,
-    ) -> Result<(), XousError> {
+    ) -> Result<(), xous::Error> {
         let vpn1 = (addr >> 22) & ((1 << 10) - 1);
         let vpn0 = (addr >> 12) & ((1 << 10) - 1);
 
@@ -276,11 +276,11 @@ impl fmt::Display for LeafPageTable {
 /// * OutOfMemory - Tried to allocate a new pagetable, but ran out of memory.
 pub fn map_page_inner(
     mm: &mut MemoryManager,
-    pid: XousPid,
+    pid: PID,
     phys: usize,
     virt: usize,
     req_flags: MemoryFlags,
-) -> Result<(), XousError> {
+) -> Result<(), xous::Error> {
     let ppn1 = (phys >> 22) & ((1 << 12) - 1);
     let ppn0 = (phys >> 12) & ((1 << 10) - 1);
     let ppo = (phys >> 0) & ((1 << 12) - 1);
@@ -363,7 +363,7 @@ pub fn map_page_inner(
 pub fn unmap_page_inner(
     _mm: &mut MemoryManager,
     virt: usize,
-) -> Result<(), XousError> {
+) -> Result<(), xous::Error> {
     let vpn1 = (virt >> 22) & ((1 << 10) - 1);
     let vpn0 = (virt >> 12) & ((1 << 10) - 1);
     let vpo = (virt >> 0) & ((1 << 12) - 1);
@@ -384,12 +384,12 @@ pub fn unmap_page_inner(
 
     // Allocate a new level 1 pagetable entry if one doesn't exist.
     if l1_pt[vpn1] & MMUFlags::VALID.bits() == 0 {
-        return Err(XousError::BadAddress);
+        return Err(xous::Error::BadAddress);
     }
 
     // Ensure the entry hasn't already been mapped.
     if l0_pt.entries[vpn0] & 1 == 0 {
-        return Err(XousError::BadAddress);
+        return Err(xous::Error::BadAddress);
     }
     l0_pt.entries[vpn0] = 0;
     unsafe { flush_mmu() };
@@ -397,7 +397,7 @@ pub fn unmap_page_inner(
     Ok(())
 }
 
-pub fn virt_to_phys(virt: usize) -> Result<usize, XousError> {
+pub fn virt_to_phys(virt: usize) -> Result<usize, xous::Error> {
     let vpn1 = (virt >> 22) & ((1 << 10) - 1);
     let vpn0 = (virt >> 12) & ((1 << 10) - 1);
 
@@ -413,12 +413,12 @@ pub fn virt_to_phys(virt: usize) -> Result<usize, XousError> {
 
     // Allocate a new level 1 pagetable entry if one doesn't exist.
     if l1_pt[vpn1] & MMUFlags::VALID.bits() == 0 {
-        return Err(XousError::BadAddress);
+        return Err(xous::Error::BadAddress);
     }
 
     // Ensure the entry hasn't already been mapped.
     if l0_pt.entries[vpn0] & 1 == 0 {
-        return Err(XousError::BadAddress);
+        return Err(xous::Error::BadAddress);
     }
     Ok(l0_pt.entries[vpn0])
 }
