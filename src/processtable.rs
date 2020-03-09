@@ -149,15 +149,15 @@ impl SystemServices {
         for init in init_offsets.iter() {
             let pid = (init.satp >> 22) & ((1 << 9) - 1);
             let ref mut process = self.processes[(pid - 1) as usize];
-            println!(
-                "Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}  Index: {}",
-                init.satp,
-                pid,
-                init.satp << 10,
-                init.entrypoint,
-                init.sp,
-                pid - 1
-            );
+            // println!(
+            //     "Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}  Index: {}",
+            //     init.satp,
+            //     pid,
+            //     init.satp << 10,
+            //     init.entrypoint,
+            //     init.sp,
+            //     pid - 1
+            // );
             unsafe { process.mapping.from_raw(init.satp) };
             process.ppid = if pid == 1 { 0 } else { 1 };
             process.state = ProcessState::Setup(init.entrypoint, init.sp, DEFAULT_STACK_SIZE);
