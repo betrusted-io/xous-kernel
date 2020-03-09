@@ -1,10 +1,12 @@
 use vexriscv::register::{satp, sie, sstatus};
 use xous::XousPid;
 
+pub mod exception;
 pub mod irq;
 pub mod mem;
 pub mod syscall;
-pub mod exception;
+
+static mut PROCESS_CONTEXT: *mut ProcessContext = 0xff80_1000 as *mut ProcessContext;
 
 pub fn current_pid() -> XousPid {
     satp::read().asid() as XousPid
@@ -36,15 +38,13 @@ impl ProcessContext {
     /// Returns the current process context, which is stored at the same address
     /// in every process.
     pub fn current() -> &'static mut ProcessContext {
-        unsafe { &mut *(0xff801000 as *mut ProcessContext) }
+        unsafe { &mut *PROCESS_CONTEXT.add(0) }
     }
 
     /// Returns the saved process context, which is stored just above the
     /// current context.
     pub fn saved() -> &'static mut ProcessContext {
-        unsafe {
-            &mut *((0xff801000 + core::mem::size_of::<ProcessContext>()) as *mut ProcessContext)
-        }
+        unsafe { &mut *PROCESS_CONTEXT.add(1) }
     }
 
     /// Determine whether a process context is valid.
