@@ -159,41 +159,41 @@ impl MemoryManager {
         Ok(())
     }
 
-    // pub fn print_ownership(&self) {
-    //     println!("Ownership ({} bytes in all):", self.allocations.len());
+    pub fn print_ownership(&self) {
+        println!("Ownership ({} bytes in all):", self.allocations.len());
 
-    //     let mut offset = 0;
-    //     unsafe {
-    //         // First, we build a &[u8]...
-    //         let name_bytes = self.ram_name.to_le_bytes();
-    //         // ... and then convert that slice into a string slice
-    //         let ram_name = str::from_utf8_unchecked(&name_bytes);
-    //         println!("    Region {} ({:08x}) {:08x} - {:08x} {} bytes:", ram_name, self.ram_name,
-    //     self.ram_start, self.ram_start + self.ram_size, self.ram_size);
-    //     };
-    //     for o in 0..self.ram_size/PAGE_SIZE {
-    //         if self.allocations[offset+o] != 0 {
-    //             println!("        {:08x} => {}", self.ram_size + o * PAGE_SIZE, self.allocations[o]);
-    //         }
-    //     }
+        let mut offset = 0;
+        unsafe {
+            // First, we build a &[u8]...
+            let name_bytes = self.ram_name.to_le_bytes();
+            // ... and then convert that slice into a string slice
+            let ram_name = str::from_utf8_unchecked(&name_bytes);
+            println!("    Region {} ({:08x}) {:08x} - {:08x} {} bytes:", ram_name, self.ram_name,
+        self.ram_start, self.ram_start + self.ram_size, self.ram_size);
+        };
+        for o in 0..self.ram_size/PAGE_SIZE {
+            if self.allocations[offset+o] != 0 {
+                println!("        {:08x} => {}", self.ram_size + o * PAGE_SIZE, self.allocations[o]);
+            }
+        }
 
-    //     offset += self.ram_size / PAGE_SIZE;
+        offset += self.ram_size / PAGE_SIZE;
 
-    //     // Go through additional regions looking for this address, and claim it
-    //     // if it's not in use.
-    //     for region in self.extra {
-    //         println!("    Region {}:", region);
-    //         for o in 0..(region.mem_size as usize)/PAGE_SIZE {
-    //             if self.allocations[offset+o] != 0 {
-    //                 println!("        {:08x} => {}",
-    //                     (region.mem_start as usize) + o*PAGE_SIZE,
-    //                     self.allocations[offset+o]
-    //                 )
-    //             }
-    //         }
-    //         offset += region.mem_size as usize / PAGE_SIZE;
-    //     }
-    // }
+        // Go through additional regions looking for this address, and claim it
+        // if it's not in use.
+        for region in self.extra {
+            println!("    Region {}:", region);
+            for o in 0..(region.mem_size as usize)/PAGE_SIZE {
+                if self.allocations[offset+o] != 0 {
+                    println!("        {:08x} => {}",
+                        (region.mem_start as usize) + o*PAGE_SIZE,
+                        self.allocations[offset+o]
+                    )
+                }
+            }
+            offset += region.mem_size as usize / PAGE_SIZE;
+        }
+    }
 
     /// Allocate a single page to the given process.
     /// Ensures the page is zeroed out prior to handing it over to

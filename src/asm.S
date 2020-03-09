@@ -42,7 +42,7 @@ _start:
     Trap entry point (_start_trap)
 
     Saves all process context into a structure that is
-    mapped to each thread at 0x00801000.  Return happens
+    mapped to each thread at 0xff801000.  Return happens
     elsewhere.
 */
 .section .trap, "ax"
@@ -50,7 +50,7 @@ _start:
 
 _start_trap:
     csrw        sscratch, sp
-    li          sp, 0x00801000
+    li          sp, 0xff801000
 
     STORE       x1, 0*REGBYTES(sp)
     // Skip SP for now
@@ -93,7 +93,7 @@ _start_trap:
     STORE       t0, 1*REGBYTES(sp)
 
     // Restore a default stack pointer
-    li          sp, 0x003ffffc
+    li          sp, 0xfffefffc
 
     // Note that registers $a0-$a7 still contain the arguments
     j           _start_trap_rust
@@ -170,7 +170,7 @@ _xous_syscall_return_result:
     LOAD        a1, 1*REGBYTES(a0)
     LOAD        a0, 0*REGBYTES(a0)
 
-    li          sp, 0x00801000
+    li          sp, 0xff801000
     LOAD        t0, 1*REGBYTES(sp)
     csrw        sscratch, t0
 

@@ -36,14 +36,14 @@ impl ProcessContext {
     /// Returns the current process context, which is stored at the same address
     /// in every process.
     pub fn current() -> &'static mut ProcessContext {
-        unsafe { &mut *(0x00801000 as *mut ProcessContext) }
+        unsafe { &mut *(0xff801000 as *mut ProcessContext) }
     }
 
     /// Returns the saved process context, which is stored just above the
     /// current context.
     pub fn saved() -> &'static mut ProcessContext {
         unsafe {
-            &mut *((0x00801000 + core::mem::size_of::<ProcessContext>()) as *mut ProcessContext)
+            &mut *((0xff801000 + core::mem::size_of::<ProcessContext>()) as *mut ProcessContext)
         }
     }
 

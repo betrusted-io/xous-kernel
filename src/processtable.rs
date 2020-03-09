@@ -12,7 +12,7 @@ pub use crate::arch::mem::DEFAULT_STACK_TOP;
 
 /// This is the address a program will jump to in order
 /// to return from an ISR.
-pub const RETURN_FROM_ISR: usize = 0x0080_2000;
+pub const RETURN_FROM_ISR: usize = 0xff80_2000;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum ProcessState {
@@ -149,8 +149,15 @@ impl SystemServices {
         for init in init_offsets.iter() {
             let pid = (init.satp >> 22) & ((1 << 9) - 1);
             let ref mut process = self.processes[(pid - 1) as usize];
-            // println!("Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}  Index: {}",
-            // init.satp, pid, init.satp << 10, init.entrypoint, init.sp, pid-1);
+            println!(
+                "Process: SATP: {:08x}  PID: {}  Memory: {:08x}  PC: {:08x}  SP: {:08x}  Index: {}",
+                init.satp,
+                pid,
+                init.satp << 10,
+                init.entrypoint,
+                init.sp,
+                pid - 1
+            );
             unsafe { process.mapping.from_raw(init.satp) };
             process.ppid = if pid == 1 { 0 } else { 1 };
             process.state = ProcessState::Setup(init.entrypoint, init.sp, DEFAULT_STACK_SIZE);
@@ -304,7 +311,6 @@ impl SystemServices {
                         context.init(entrypoint, stack);
                         // Mark the stack as "unallocated-but-free"
                         let init_sp = stack & !0xfff;
-                        println!("Going to reserve the range");
                         let mut memory_manager = MemoryManagerHandle::get();
                         memory_manager
                             .reserve_range(

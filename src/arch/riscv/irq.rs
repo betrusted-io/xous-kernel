@@ -120,7 +120,7 @@ pub extern "C" fn trap_handler(
     use crate::arch::exception::RiscvException;
     let ex = RiscvException::from_regs(sc.bits(), sepc::read(), stval::read());
     if sc.is_exception() {
-        // If the CPU tries to store, lok for a "reserved page" and provide
+        // If the CPU tries to store, look for a "reserved page" and provide
         // it with one if necessary.
         match ex {
             RiscvException::StorePageFault(pc, addr) | RiscvException::LoadPageFault(pc, addr) => {
@@ -128,9 +128,14 @@ pub extern "C" fn trap_handler(
                 let mapping = MemoryMapping::current();
                 let entry = mapping.pagetable_entry(addr);
                 if entry as usize == 0 {
-                    panic!("pagetable consistency error");
+                    // MemoryManagerHandle::get().print_ownership();
+                    MemoryMapping::current().print_map();
+                    panic!("error at {:08x}: memory not mapped or reserved for addr {:08x}", pc, addr);
                 }
                 let flags = unsafe { entry.read_volatile() } & 0xf;
+
+                // If the flags are nonzero, but the "Valid" bit is not 1, then this is
+                // a reserved page.  Allocate a real page to back it and resume execution.
                 if flags & 1 == 0 && flags != 0 {
                     let new_page = {
                         let mut mm = MemoryManagerHandle::get();
@@ -144,7 +149,6 @@ pub extern "C" fn trap_handler(
                     };
                     unsafe { flush_mmu() };
                     crate::arch::syscall::resume(current_pid() == 1, ProcessContext::current());
-                    // map_page_and_return(pc, sp, pid, flags);
                 }
             }
             RiscvException::InstructionPageFault(RETURN_FROM_ISR, _offset) => {

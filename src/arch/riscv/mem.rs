@@ -3,15 +3,15 @@ use core::fmt;
 use vexriscv::register::satp;
 use xous::{MemoryFlags, XousError, XousPid};
 
-pub const DEFAULT_STACK_TOP: usize = 0xffff_0000;
-pub const DEFAULT_HEAP_BASE: usize = 0x4000_0000;
-pub const DEFAULT_MESSAGE_BASE: usize = 0x8000_0000;
-pub const DEFAULT_BASE: usize = 0xc000_0000;
+pub const DEFAULT_STACK_TOP: usize = 0x8000_0000;
+pub const DEFAULT_HEAP_BASE: usize = 0x2000_0000;
+pub const DEFAULT_MESSAGE_BASE: usize = 0x4000_0000;
+pub const DEFAULT_BASE: usize = 0x6000_0000;
 
-pub const USER_AREA_START: usize = 0x00c0_0000;
+pub const USER_AREA_END: usize = 0xff00_0000;
 pub const PAGE_SIZE: usize = 4096;
-const PAGE_TABLE_OFFSET: usize = 0x0040_0000;
-const PAGE_TABLE_ROOT_OFFSET: usize = 0x0080_0000;
+const PAGE_TABLE_OFFSET: usize = 0xff40_0000;
+const PAGE_TABLE_ROOT_OFFSET: usize = 0xff80_0000;
 
 extern "C" {
     fn flush_mmu();
@@ -112,38 +112,47 @@ impl MemoryMapping {
     //     l0_pt.entries[vpn0]
     // }
 
-    // pub fn print_map(&self) {
-    //     println!("Memory Maps:");
-    //     let l1_pt = unsafe { &mut (*(PAGE_TABLE_ROOT_OFFSET as *mut RootPageTable)) };
-    //     for (i, l1_entry) in l1_pt.entries.iter().enumerate() {
-    //         if *l1_entry == 0 {
-    //             continue;
-    //         }
-    //         let superpage_addr = i as u32 * (1 << 22);
-    //         println!(
-    //             "    {:4} Superpage for {:08x} @ {:08x} (flags: {:?})",
-    //             i,
-    //             superpage_addr,
-    //             (*l1_entry >> 10) << 12,
-    //             MMUFlags::from_bits(l1_entry & 0xff).unwrap()
-    //         );
-    //         // let l0_pt_addr = ((l1_entry >> 10) << 12) as *const u32;
-    //         let l0_pt = unsafe { &mut (*((PAGE_TABLE_OFFSET + i * 4096) as *mut LeafPageTable)) };
-    //         for (j, l0_entry) in l0_pt.entries.iter().enumerate() {
-    //             if *l0_entry == 0 {
-    //                 continue;
-    //             }
-    //             let page_addr = j as u32 * (1 << 12);
-    //             println!(
-    //                 "        {:4} {:08x} -> {:08x} (flags: {:?})",
-    //                 j,
-    //                 superpage_addr + page_addr,
-    //                 (*l0_entry >> 10) << 12,
-    //                 MMUFlags::from_bits(l0_entry & 0xff).unwrap()
-    //             );
-    //         }
-    //     }
-    // }
+    pub fn print_map(&self) {
+        println!("Memory Maps:");
+        let l1_pt = unsafe { &mut (*(PAGE_TABLE_ROOT_OFFSET as *mut RootPageTable)) };
+        for (i, l1_entry) in l1_pt.entries.iter().enumerate() {
+            if *l1_entry == 0 {
+                continue;
+            }
+            let superpage_addr = i as u32 * (1 << 22);
+            println!(
+                "    {:4} Superpage for {:08x} @ {:08x} (flags: {:?})",
+                i,
+                superpage_addr,
+                (*l1_entry >> 10) << 12,
+                MMUFlags::from_bits(l1_entry & 0xff).unwrap()
+            );
+
+            // Page 1023 is only available to PID1
+            if i == 1023 {
+                if self.get_pid() != 1 {
+                    println!("        <unavailable>");
+                    continue;
+                }
+            }
+            // let l0_pt_addr = ((l1_entry >> 10) << 12) as *const u32;
+            let l0_pt = unsafe { &mut (*((PAGE_TABLE_OFFSET + i * 4096) as *mut LeafPageTable)) };
+            for (j, l0_entry) in l0_pt.entries.iter().enumerate() {
+                if *l0_entry & 1 == 0 {
+                    continue;
+                }
+                let page_addr = j as u32 * (1 << 12);
+                println!(
+                    "        {:4} {:08x} -> {:08x} (flags: {:?})",
+                    j,
+                    superpage_addr + page_addr,
+                    (*l0_entry >> 10) << 12,
+                    MMUFlags::from_bits(l0_entry & 0xff).unwrap()
+                );
+            }
+        }
+        println!("End of map");
+    }
 
     /// Get the pagetable entry for a given address, or `0` if none is set.
     pub fn pagetable_entry(&self, addr: usize) -> *mut usize {
@@ -285,7 +294,7 @@ pub fn map_page_inner(
     // exclusive access to this memory.
     // Additionally, any address below the user area must be accessible
     // by the kernel.
-    if pid != 1 && virt >= USER_AREA_START {
+    if pid != 1 && virt < USER_AREA_END {
         flags |= MMUFlags::USER;
     }
 

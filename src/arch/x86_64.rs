@@ -112,7 +112,7 @@ pub mod mem {
     pub const DEFAULT_MESSAGE_BASE: usize = 0x8000_0000;
     pub const DEFAULT_BASE: usize = 0xc000_0000;
 
-    pub const USER_AREA_START: usize = 0x00c0_0000;
+    pub const USER_AREA_END: usize = 0xff000000;
     pub const PAGE_SIZE: usize = 4096;
 }
 

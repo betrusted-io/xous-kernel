@@ -138,7 +138,7 @@ pub fn handle(call: SysCall) -> XousResult {
     match call {
         SysCall::MapPhysical(phys, virt, size, req_flags) => {
             let mut mm = MemoryManagerHandle::get();
-            if pid != 1 && (virt as usize) != 0 && (virt as usize) < arch::mem::USER_AREA_START {
+            if pid != 1 && (virt as usize) != 0 && (virt as usize) >= arch::mem::USER_AREA_END {
                 return XousResult::Error(XousError::BadAddress);
             } else if size & 4095 != 0 {
                 // println!("map: bad alignment of size {:08x}", size);
