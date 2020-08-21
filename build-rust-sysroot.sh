@@ -1,5 +1,8 @@
 #!/bin/sh -x
 
+# SPDX-FileCopyrightText: 2020 Sean Cross <sean@xobs.io>
+# SPDX-License-Identifier: Apache-2.0
+
 rust_root="$(pwd)/rust"
 rust_target="riscv32imac-unknown-xous-elf"
 export RUSTC_BOOTSTRAP=1

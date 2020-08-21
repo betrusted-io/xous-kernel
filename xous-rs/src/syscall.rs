@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2020 Sean Cross <sean@xobs.io>
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::{CpuID, Error, PID};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
