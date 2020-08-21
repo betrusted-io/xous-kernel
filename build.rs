@@ -1,4 +1,9 @@
 // NOTE: Adapted from cortex-m/build.rs
+
+// SPDX-FileCopyrightText: 2020 Sean Cross <sean@xobs.io>
+// SPDX-License-Identifier: Apache-2.0
+
+
 use std::env;
 use std::fs;
 use std::io::Write;
