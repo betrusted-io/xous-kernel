@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2020 Sean Cross <sean@xobs.io>
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Contributor Covenant Code of Conduct
 
 ## Our Pledge
