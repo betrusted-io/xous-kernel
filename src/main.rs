@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2020 Sean Cross <sean@xobs.io>
+// SPDX-License-Identifier: Apache-2.0
+
 #![cfg_attr(not(test), no_main)]
 #![cfg_attr(not(test), no_std)]
 

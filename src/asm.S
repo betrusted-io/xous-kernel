@@ -10,6 +10,11 @@
 #define REGBYTES (1 << LOG_REGBYTES)
 
 /*
+    SPDX-FileCopyrightText: 2020 Sean Cross <sean@xobs.io>
+    SPDX-License-Identifier: Apache-2.0
+*/
+
+/*
     Entry point of all programs (_start).
 
     It initializes DWARF call frame information, the stack pointer, the
